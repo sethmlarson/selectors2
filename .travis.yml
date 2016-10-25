@@ -45,7 +45,7 @@ before_install:
   - openssl version
   
 install:
-  - ./_travis/install.sh
+  - ./.travis/install.sh
   
 script:
   - ./.travis/run.sh
