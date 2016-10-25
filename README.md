@@ -11,7 +11,7 @@ Yes! This module is a 1-to-1 drop-in replacement for `selectors` and
 provides all selector types that would be available in `selectors` including
 `DevpollSelector`, `KqueueSelector`, `EpollSelector`, `PollSelector`, and `SelectSelector`.
 
-#### What is different between this and `selectors34`?
+#### What is different between `selectors2` and `selectors34`?
 
 This module is similar to `selectors34` in that it supports Python 3.6 - 3.3
 but differs in that this module also implements [PEP 475](https://www.python.org/dev/peps/pep-0475/) for the backported selectors.
@@ -26,10 +26,11 @@ On Linux and Mac OS, both sockets and pipes are supported (some other types may 
 
 #### What if I have to support a platform without `select.select`?
 
-There are a few platforms that don't have a selector available.
-Notably Google AppEngine, but there are probably a lot more. If you must support these
+There are a few platforms that don't have a selector available, notably 
+Google AppEngine, but there are probably a lot more. If you must support these
 platforms, one should check `selectors.HAS_SELECTOR` for a True value before
-trying to use `selectors.DefaultSelector`.
+trying to use `selectors.DefaultSelector`.  Note this is not available for
+`selectors` or `selectors34`.
 
 #### Windows has IOCP, why don't you support it?
 
