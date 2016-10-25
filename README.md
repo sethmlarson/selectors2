@@ -1,11 +1,17 @@
 # selectors2
+============
+
+[![Travis Build Status](https://img.shields.io/travis/SethMichaelLarson/selectors2/master.svg?style=flat-square)]()
+[![AppVeyor Build Status](https://img.shields.io/appveyor/ci/SethMichaelLarson/selectors2/master.svg?style=flat-square)]()
+[![Available on PyPI](https://img.shields.io/pypi/v/selectors2.svg?style=flat-square)]()
+
 Drop-in replacement of the selectors module for Python 2.6+ that integrates PEP 475.
 
 ## About
 
 This module was originally written by me for the [urllib3](https://github.com/shazow/urllib3) project (history in PR [#1001](https://github.com/shazow/urllib3/pull/1001)) but it was decided that it would be beneficial for everyone to have access to this work.
 
-#### Can this module be used in place of `selectors`?
+#### Can this module be used in place of [`selectors`](https://docs.python.org/3/library/selectors.html)?
 
 Yes! This module is a 1-to-1 drop-in replacement for `selectors` and 
 provides all selector types that would be available in `selectors` including
@@ -24,7 +30,7 @@ for some use cases is not an acceptable behavior.
 At this current time `selectors2` only support the `SelectSelector` for Windows which cannot select on non-socket objects.
 On Linux and Mac OS, both sockets and pipes are supported (some other types may be supported as well, such as fifos or special file devices).
 
-#### What if I have to support a platform without `select.select`?
+#### What if I have to support a platform without [`select.select`](https://docs.python.org/3/library/select.html)?
 
 There are a few platforms that don't have a selector available, notably 
 Google AppEngine, but there are probably a lot more. If you must support these
