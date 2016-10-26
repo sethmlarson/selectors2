@@ -1,5 +1,4 @@
 # selectors2
-============
 
 [![Travis Build Status](https://img.shields.io/travis/SethMichaelLarson/selectors2/master.svg?style=flat-square)]()
 [![AppVeyor Build Status](https://img.shields.io/appveyor/ci/SethMichaelLarson/selectors2/master.svg?style=flat-square)]()
