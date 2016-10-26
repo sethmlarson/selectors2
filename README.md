@@ -7,6 +7,15 @@
 
 Drop-in replacement of the selectors module for Python 2.6+ that integrates PEP 475.
 
+- Support for all major platforms. (Linux, Mac OS, Windows)
+- Support many different selectors:
+  - `select.kqueue` (BSD, Mac OS)
+  - `select.devpoll` (Solaris)
+  - `select.epoll` (Linux 2.5.44+)
+  - `select.poll` (Linux, Mac OS)
+  - `select.select` - (Linux, Mac OS, Windows)
+- Support for PEP 475 (Retries syscalls on interrupt)
+
 ## About
 
 This module was originally written by me for the [urllib3](https://github.com/shazow/urllib3) project (history in PR [#1001](https://github.com/shazow/urllib3/pull/1001)) but it was decided that it would be beneficial for everyone to have access to this work.
@@ -19,7 +28,7 @@ provides all selector types that would be available in `selectors` including
 
 #### What is different between `selectors2` and `selectors34`?
 
-This module is similar to `selectors34` in that it supports Python 3.6 - 3.3
+This module is similar to `selectors34` in that it supports Python 2.6 - 3.3
 but differs in that this module also implements [PEP 475](https://www.python.org/dev/peps/pep-0475/) for the backported selectors.
 This allows similar behaviour between Python 3.5+ selectors and selectors from before PEP 475.
 In `selectors34`, an interrupted system call would result in an incorrect return of no events, which
