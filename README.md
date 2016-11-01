@@ -33,6 +33,10 @@ This allows similar behaviour between Python 3.5+ selectors and selectors from b
 In `selectors34`, an interrupted system call would result in an incorrect return of no events, which
 for some use cases is not an acceptable behavior.
 
+I will also add here that `selectors2` also makes large improvements on the test suite surrounding it
+providing 100% test coverage for each selector.  The test suite is also more robust and tests durability
+of the selectors in many different situations that aren't tested in `selectors34`.
+
 #### What types of objects are supported?
 
 At this current time `selectors2` only support the `SelectSelector` for Windows which cannot select on non-socket objects.
