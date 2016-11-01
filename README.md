@@ -8,11 +8,11 @@ Drop-in replacement of the selectors module for Python 2.6+ that integrates PEP 
 
 - Support for all major platforms. (Linux, Mac OS, Windows)
 - Support many different selectors:
-  - `select.kqueue` (BSD, Mac OS)
-  - `select.devpoll` (Solaris)
-  - `select.epoll` (Linux 2.5.44+)
-  - `select.poll` (Linux, Mac OS)
-  - `select.select` - (Linux, Mac OS, Windows)
+  - [`select.kqueue`](https://docs.python.org/3/library/select.html#select.kqueue) (BSD, Mac OS)
+  - [`select.devpoll`](https://docs.python.org/3/library/select.html#select.devpoll) (Solaris)
+  - [`select.epoll`](https://docs.python.org/3/library/select.html#select.epoll) (Linux 2.5.44+)
+  - [`select.poll`](https://docs.python.org/3/library/select.html#select.poll) (Linux, Mac OS)
+  - [`select.select`](https://docs.python.org/3/library/select.html#select.select) - (Linux, Mac OS, Windows)
 - Support for PEP 475 (Retries syscalls on interrupt)
 
 ## About
