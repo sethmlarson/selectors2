@@ -63,9 +63,10 @@ This module is dual-licensed under MIT and PSF License.
 ## Usage
 
 ```python
-try:  # Python 3.4 +
+import sys
+if sys.version_info > (3, 5):  # Python 3.5+
     import selectors
-except ImportError:  # Python 2.6 - 3.3
+else:  # Python 2.6 - 3.4
     import selectors2 as selectors
 
 # Use DefaultSelector, it picks the fastest
