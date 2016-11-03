@@ -198,6 +198,7 @@ class BaseSelector(object):
             if err.errno != errno.EBADF:
                 raise
             return None
+
         return key
 
     def modify(self, fileobj, events, data=None):
@@ -277,8 +278,9 @@ if hasattr(select, "select"):
 
         def unregister(self, fileobj):
             key = super(SelectSelector, self).unregister(fileobj)
-            self._readers.discard(key.fd)
-            self._writers.discard(key.fd)
+            if key is not None:  # Windows can error if the fileobj is closed.
+                self._readers.discard(key.fd)
+                self._writers.discard(key.fd)
             return key
 
         def _select(self, r, w, timeout=None):
