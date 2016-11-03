@@ -191,6 +191,10 @@ class BaseSelector(object):
             key = self._fd_to_key.pop(self._fileobj_lookup(fileobj))
         except KeyError:
             raise KeyError("{0!r} is not registered".format(fileobj))
+        except OSError as err:
+            if err.errno != errno.EBADF:
+                raise
+            return None
         return key
 
     def modify(self, fileobj, events, data=None):
@@ -428,6 +432,7 @@ if hasattr(select, "devpoll"):
         def __init__(self):
             super(DevpollSelector, self).__init__()
             self._devpoll = select.devpoll()
+
 
 if hasattr(select, "kqueue"):
     class KqueueSelector(BaseSelector):
