@@ -1,9 +1,13 @@
-from setuptools import setup, find_packages
+from setuptools import setup
+
+with open('CHANGELOG.rst', encoding='utf-8') as f:
+    long_description = f.read()
 
 if __name__ == "__main__":
     setup(
         name="selectors2",
-        description="",
+        description="Drop-in replacement of the selectors module for Python 2.6+ that integrates PEP 475",
+        long_description=long_description,
         license="PSFL+MIT",
         url="https://www.github.com/SethMichaelLarson/selectors2",
         version="1.0",
@@ -24,7 +28,7 @@ if __name__ == "__main__":
             'Programming Language :: Python :: 3.4',
             'License :: OSI Approved :: Python Software Foundation License',
             'License :: OSI Approved :: MIT License',
-            
+
             # Fake classifier to prevent accidental releases.
             'Private :: Do Not Upload'
         ]
