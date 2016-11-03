@@ -1,12 +1,9 @@
 language: python
 sudo: false
 
-env:
-  global:
-    - PYTHONWARNINGS=always::DeprecationWarning
-    
 matrix:
   include:
+
     # Linux Builds
     - python: 2.6
       env: TOXENV=py26
@@ -15,10 +12,10 @@ matrix:
     - python: 3.3
       env: TOXENV=py33
     - python: 3.4
-      env: TOXENV=py34      
+      env: TOXENV=py34
     - python: 3.5
       env: TOXENV=py35
-      
+
     # OSX Builds
     - language: generic
       os: osx
@@ -40,15 +37,16 @@ cache:
   - pip
   - directories:
     - ${HOME}/.cache
-    
+
 before_install:
   - openssl version
-  
+
 install:
+  - chmod a+x ./.travis/install.sh ./.travis/run.sh
   - ./.travis/install.sh
-  
+
 script:
   - ./.travis/run.sh
-  
+
 notifications:
   email: false
