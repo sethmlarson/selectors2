@@ -8,6 +8,7 @@
 import errno
 import math
 import select
+import socket
 from collections import namedtuple, Mapping
 
 import time
@@ -191,7 +192,9 @@ class BaseSelector(object):
             key = self._fd_to_key.pop(self._fileobj_lookup(fileobj))
         except KeyError:
             raise KeyError("{0!r} is not registered".format(fileobj))
-        except OSError as err:
+
+        # Getting the fileno of a closed socket on Windows errors with EBADF.
+        except socket.error as err:
             if err.errno != errno.EBADF:
                 raise
             return None
