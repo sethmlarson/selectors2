@@ -35,7 +35,7 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
     SELECTOR = selectors.DefaultSelector
 
     def make_socketpair(self):
-        rd, wr = socket.socketpair()
+        rd, wr = socketpair()
 
         # Make non-blocking so we get errors if the
         # sockets are interacted with but not ready.
