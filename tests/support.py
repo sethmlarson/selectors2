@@ -65,7 +65,7 @@ else:
                 csock.setblocking(False)
                 try:
                     csock.connect((addr, port))
-                except (BlockingIOError, InterruptedError):
+                except (OSError, socket.error):
                     pass
                 csock.setblocking(True)
                 ssock, _ = lsock.accept()
