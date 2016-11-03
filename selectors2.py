@@ -200,8 +200,10 @@ class BaseSelector(object):
             else:
                 for key in self._fd_to_key.values():
                     if key.fileobj is fileobj:
-                        return key
-                raise KeyError("{0!r} is not registered".format(fileobj))
+                        self._fd_to_key.pop(key.fd)
+                        break
+                else:
+                    raise KeyError("{0!r} is not registered".format(fileobj))
         return key
 
     def modify(self, fileobj, events, data=None):
