@@ -197,8 +197,11 @@ class BaseSelector(object):
         except socket.error as err:
             if err.errno != errno.EBADF:
                 raise
-            return None
-
+            else:
+                for key in self._fd_to_key.values():
+                    if key.fileobj is fileobj:
+                        return key
+                raise KeyError("{0!r} is not registered".format(fileobj))
         return key
 
     def modify(self, fileobj, events, data=None):
@@ -278,9 +281,8 @@ if hasattr(select, "select"):
 
         def unregister(self, fileobj):
             key = super(SelectSelector, self).unregister(fileobj)
-            if key is not None:  # Windows can error if the fileobj is closed.
-                self._readers.discard(key.fd)
-                self._writers.discard(key.fd)
+            self._readers.discard(key.fd)
+            self._writers.discard(key.fd)
             return key
 
         def _select(self, r, w, timeout=None):
