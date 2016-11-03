@@ -437,10 +437,63 @@ if hasattr(select, "epoll"):
 
 if hasattr(select, "devpoll"):
     class DevpollSelector(BaseSelector):
-        """ Devpoll-based selector """
+        """Solaris /dev/poll selector."""
+
         def __init__(self):
             super(DevpollSelector, self).__init__()
             self._devpoll = select.devpoll()
+
+        def fileno(self):
+            return self._devpoll.fileno()
+
+        def register(self, fileobj, events, data=None):
+            key = super(DevpollSelector, self).register(fileobj, events, data)
+            poll_events = 0
+            if events & EVENT_READ:
+                poll_events |= select.POLLIN
+            if events & EVENT_WRITE:
+                poll_events |= select.POLLOUT
+            self._devpoll.register(key.fd, poll_events)
+            return key
+
+        def unregister(self, fileobj):
+            key = super(DevpollSelector, self).unregister(fileobj)
+            self._devpoll.unregister(key.fd)
+            return key
+
+        def _wrap_poll(self, timeout=None):
+            """ Wrapper function for select.poll.poll() so that
+            _syscall_wrapper can work with only seconds. """
+            if timeout is not None:
+                if timeout <= 0:
+                    timeout = 0
+                else:
+                    # select.devpoll.poll() has a resolution of 1 millisecond,
+                    # round away from zero to wait *at least* timeout seconds.
+                    timeout = math.ceil(timeout * 1e3)
+
+            result = self._devpoll.poll(timeout)
+            return result
+
+        def select(self, timeout=None):
+            ready = []
+            fd_events = _syscall_wrapper(self._wrap_poll, True, timeout=timeout)
+            for fd, event_mask in fd_events:
+                events = 0
+                if event_mask & ~select.POLLIN:
+                    events |= EVENT_WRITE
+                if event_mask & ~select.POLLOUT:
+                    events |= EVENT_READ
+
+                key = self._key_from_fd(fd)
+                if key:
+                    ready.append((key, events & key.events))
+
+            return ready
+
+        def close(self):
+            self._devpoll.close()
+            super(DevpollSelector, self).close()
 
 
 if hasattr(select, "kqueue"):
