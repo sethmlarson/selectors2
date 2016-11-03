@@ -27,9 +27,6 @@ if __name__ == "__main__":
             'Programming Language :: Python :: 3.3',
             'Programming Language :: Python :: 3.4',
             'License :: OSI Approved :: Python Software Foundation License',
-            'License :: OSI Approved :: MIT License',
-
-            # Fake classifier to prevent accidental releases.
-            'Private :: Do Not Upload'
+            'License :: OSI Approved :: MIT License'
         ]
     )
