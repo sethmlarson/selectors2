@@ -79,7 +79,7 @@ Installation
 
 Usage
 -----
-::
+.. code-block:: python
 
     import sys
     if sys.version_info > (3, 5):  # Python 3.5+
