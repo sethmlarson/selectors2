@@ -8,6 +8,8 @@ selectors2
     :target: https://ci.appveyor.com/project/SethMichaelLarson/selectors2
 .. image:: https://img.shields.io/pypi/v/selectors2.svg
     :target: https://pypi.python.org/pypi/selectors2
+.. image:: https://img.shields.io/badge/SayThanks.io-%E2%98%BC-1EAED8.svg
+    :target: https://saythanks.io/to/SethMichaelLarson
 
 Drop-in replacement of the selectors module for Python 2.6+ that integrates PEP 475.
 
@@ -127,4 +129,4 @@ Contributing
 ------------
 This repository is thankful for all community-made PRs and Issues. :)
 
-If this work is useful to you, `feel free to say thanks <https://saythanks.io/SethMichaelLarson>`_, takes only a little time and really brightens my day! :cake:
+If this work is useful to you, `feel free to say thanks <https://saythanks.io/to/SethMichaelLarson>`_, takes only a little time and really brightens my day! :cake:
