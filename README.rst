@@ -123,3 +123,8 @@ Usage
     s.unregister(sock)
     sock.close()
 
+Contributing
+------------
+This repository is thankful for all community-made PRs and Issues. :)
+
+If this work is useful to you, `feel free to say thanks <https://saythanks.io/SethMichaelLarson>`_, takes only a little time and really brightens my day! :cake:
