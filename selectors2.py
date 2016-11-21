@@ -580,7 +580,7 @@ if hasattr(select, "kqueue"):
 
 
 # Choose the best implementation, roughly:
-# kqueue == epoll > poll > select. Devpoll not supported. (See above)
+# kqueue == epoll == devpoll > poll > select.
 # select() also can't accept a FD > FD_SETSIZE (usually around 1024)
 if 'KqueueSelector' in globals():  # Platform-specific: Mac OS and BSD
     DefaultSelector = KqueueSelector
