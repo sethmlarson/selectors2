@@ -15,6 +15,8 @@ matrix:
       env: TOXENV=py34
     - python: 3.5
       env: TOXENV=py35
+    - python: 3.6
+      env: TOXENV=py36
 
     # OSX Builds
     - language: generic
@@ -32,6 +34,9 @@ matrix:
     - language: generic
       os: osx
       env: TOXENV=py35
+    - language: generic
+      os: osx
+      env: TOXENV=py36
 
 cache:
   - pip

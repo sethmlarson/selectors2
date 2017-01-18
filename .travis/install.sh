@@ -4,13 +4,6 @@ set -e
 set -x
 
 if [[ "$(uname -s)" == 'Darwin' ]]; then
-    sw_vers
-    brew update || brew update
-
-    brew outdated openssl || brew upgrade openssl
-    export LDFLAGS="-L$(brew --prefix openssl)/lib"
-    export CFLAGS="-I$(brew --prefix openssl)/include"
-
     # install pyenv
     git clone --depth 1 https://github.com/yyuu/pyenv.git ~/.pyenv
     PYENV_ROOT="$HOME/.pyenv"
@@ -37,6 +30,10 @@ if [[ "$(uname -s)" == 'Darwin' ]]; then
         py35)
             pyenv install 3.5.2
             pyenv global 3.5.2
+            ;;
+        py36)
+            pyenv install 3.6.0
+            pyenv global 3.6.0
             ;;
     esac
     pyenv rehash
