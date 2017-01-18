@@ -10,13 +10,26 @@ import math
 import select
 import socket
 import sys
+import time
 from collections import namedtuple, Mapping
 
-import time
 try:
     monotonic = time.monotonic
 except (AttributeError, ImportError):  # Python 3.3<
     monotonic = time.time
+
+__author__ = 'Seth Michael Larson'
+__email__ = 'sethmichaellarson@protonmail.com'
+__version__ = '1.1.0'
+__license__ = 'MIT'
+
+__all__ = [
+    'EVENT_READ',
+    'EVENT_WRITE',
+    'SelectorError',
+    'SelectorKey',
+    'DefaultSelector'
+]
 
 EVENT_READ = (1 << 0)
 EVENT_WRITE = (1 << 1)
@@ -329,6 +342,8 @@ if hasattr(select, "select"):
                     ready.append((key, events & key.events))
             return ready
 
+    __all__.append('SelectSelector')
+
 
 if hasattr(select, "poll"):
     class PollSelector(BaseSelector):
@@ -382,6 +397,7 @@ if hasattr(select, "poll"):
 
             return ready
 
+    __all__.append('PollSelector')
 
 if hasattr(select, "epoll"):
     class EpollSelector(BaseSelector):
@@ -449,6 +465,8 @@ if hasattr(select, "epoll"):
             self._epoll.close()
             super(EpollSelector, self).close()
 
+    __all__.append('EpollSelector')
+
 
 if hasattr(select, "devpoll"):
     class DevpollSelector(BaseSelector):
@@ -509,6 +527,8 @@ if hasattr(select, "devpoll"):
         def close(self):
             self._devpoll.close()
             super(DevpollSelector, self).close()
+
+    __all__.append('DevpollSelector')
 
 
 if hasattr(select, "kqueue"):
@@ -592,6 +612,8 @@ if hasattr(select, "kqueue"):
         def close(self):
             self._kqueue.close()
             super(KqueueSelector, self).close()
+
+    __all__.append('KqueueSelector')
 
 
 # Choose the best implementation, roughly:
