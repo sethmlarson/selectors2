@@ -1,6 +1,11 @@
 Changelog
 =========
 
+Release 1.1.1 (February 6, 2017)
+--------------------------------
+
+* Platforms that define ``select.kqueue`` would not have ``KqueueSelector`` as the ``DefaultSelector``.
+
 Release 1.1.0 (January 17, 2017)
 --------------------------------
 
