@@ -1,4 +1,3 @@
-==========
 selectors2
 ==========
 
@@ -11,7 +10,7 @@ selectors2
 .. image:: https://img.shields.io/badge/SayThanks.io-%E2%98%BC-1EAED8.svg
     :target: https://saythanks.io/to/SethMichaelLarson
 
-Drop-in replacement of the selectors module for Python 2.6+ that integrates PEP 475.
+Backported, durable, and portable selectors.
 
 * Support for all major platforms. (Linux, Mac OS, Windows)
 * Support many different selectors
@@ -62,13 +61,6 @@ platforms, one should check ``selectors.HAS_SELECTOR`` for a True value before
 trying to use ``selectors.DefaultSelector``.  Note this is not available for
 ``selectors`` or ``selectors34``.
 
-Windows has IOCP, why don't you support it?
--------------------------------------------
-
-Yes, Windows has access to IOCP which is more performant than ``SelectSelector`` but
-is also much harder to implement and requires the ``win32`` module to expose the interface.
-This is something I would like in the future, feel free to send a PR! :)
-
 License
 -------
 
@@ -84,12 +76,9 @@ Usage
 .. code-block:: python
 
     import sys
-    if sys.version_info > (3, 5):  # Python 3.5+
-        import selectors
-    else:  # Python 2.6 - 3.4
-        import selectors2 as selectors
+    import selectors2 as selectors
 
-    # Use DefaultSelector, it picks the fastest
+    # Use DefaultSelector, it picks the best
     # selector available for your platform! :)
     s = selectors.DefaultSelector()
 
@@ -129,4 +118,5 @@ Contributing
 ------------
 This repository is thankful for all community-made PRs and Issues. :)
 
-If this work is useful to you, `feel free to say thanks <https://saythanks.io/to/SethMichaelLarson>`_, takes only a little time and really brightens my day! :cake:
+If this work is useful to you, `feel free to say thanks <https://saythanks.io/to/SethMichaelLarson>`_,
+takes only a little time and really brightens my day! :cake:

@@ -2,37 +2,79 @@ from __future__ import with_statement
 import errno
 import os
 import psutil
+import platform
+import select
 import signal
-import socket
 import sys
 import time
+from .support import socketpair, AlarmMixin, TimerMixin
 
-import selectors2 as selectors
-from support import (
-    resource,
-    get_time,
-    socketpair,
-    AlarmMixin,
-    TimerMixin
-)
+import selectors2
 
 try:  # Python 2.6 unittest module doesn't have skip decorators.
-    from unittest import skip, skipIf, skipUnless
+    from unittest import skipIf, skipUnless
     import unittest
 except ImportError:
-    from unittest2 import skip, skipIf, skipUnless
+    from unittest2 import skipIf, skipUnless
     import unittest2 as unittest
 
+try:  # Python 2.x doesn't define time.perf_counter.
+    from time import perf_counter as get_time
+except ImportError:
+    from time import time as get_time
+
+try:  # Python 2.6 doesn't have the resource module.
+    import resource
+except ImportError:
+    resource = None
 
 HAS_ALARM = hasattr(signal, "alarm")
-LONG_SELECT = 0.2
+
+LONG_SELECT = 1.0
 SHORT_SELECT = 0.01
 
+# Tolerance values for timer/speed fluctuations.
+TOLERANCE = 0.75
 
-@skipUnless(selectors.HAS_SELECT, "Platform doesn't have a selector")
+# Detect whether we're running on Travis or AppVeyor.  This
+# is used to skip some verification points inside of tests to
+# not randomly fail our CI due to wild timer/speed differences.
+TRAVIS_CI = "TRAVIS" in os.environ
+APPVEYOR = "APPVEYOR" in os.environ
+
+
+skipUnlessHasSelector = skipUnless(hasattr(selectors2, 'SelectSelector'), "Platform doesn't have a selector")
+skipUnlessHasENOSYS = skipUnless(hasattr(errno, 'ENOSYS'), "Platform doesn't have errno.ENOSYS")
+skipUnlessHasAlarm = skipUnless(hasattr(signal, 'alarm'), "Platform doesn't have signal.alarm()")
+skipUnlessJython = skipUnless(platform.system() == 'Java', "Platform is not Jython")
+
+
+def patch_select_module(testcase, *keep, **replace):
+    """ Helper function that removes all selectors from the select module
+    except those listed in *keep and **replace. Those in keep will be kept
+    if they exist in the select module and those in replace will be patched
+    with the value that is given regardless if they exist or not. Cleanup
+    will restore previous state. This helper also resets the selectors module
+    so that a call to DefaultSelector() will do feature detection again. """
+
+    selectors2._DEFAULT_SELECTOR = None
+    for s in ['select', 'poll', 'epoll', 'kqueue']:
+        if s in replace:
+            if hasattr(select, s):
+                old_selector = getattr(select, s)
+                testcase.addCleanup(setattr, select, s, old_selector)
+            else:
+                testcase.addCleanup(delattr, select, s)
+            setattr(select, s, replace[s])
+        elif s not in keep and hasattr(select, s):
+            old_selector = getattr(select, s)
+            testcase.addCleanup(setattr, select, s, old_selector)
+            delattr(select, s)
+
+
+@skipUnlessHasSelector
 class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
     """ Implements the tests that each type of selector must pass. """
-    SELECTOR = selectors.DefaultSelector
 
     def make_socketpair(self):
         rd, wr = socketpair()
@@ -47,22 +89,22 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
         return rd, wr
 
     def make_selector(self):
-        s = self.SELECTOR()
+        s = selectors2.DefaultSelector()
         self.addCleanup(s.close)
         return s
 
     def standard_setup(self):
         s = self.make_selector()
         rd, wr = self.make_socketpair()
-        s.register(rd, selectors.EVENT_READ)
-        s.register(wr, selectors.EVENT_WRITE)
+        s.register(rd, selectors2.EVENT_READ)
+        s.register(wr, selectors2.EVENT_WRITE)
         return s, rd, wr
 
     def test_get_key(self):
         s = self.make_selector()
         rd, wr = self.make_socketpair()
 
-        key = s.register(rd, selectors.EVENT_READ, "data")
+        key = s.register(rd, selectors2.EVENT_READ, "data")
         self.assertEqual(key, s.get_key(rd))
 
         # Unknown fileobj
@@ -76,7 +118,7 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
         self.assertFalse(keys)
         self.assertEqual(len(keys), 0)
         self.assertEqual(list(keys), [])
-        key = s.register(rd, selectors.EVENT_READ, "data")
+        key = s.register(rd, selectors2.EVENT_READ, "data")
         self.assertIn(rd, keys)
         self.assertEqual(key, keys[rd])
         self.assertEqual(len(keys), 1)
@@ -105,11 +147,11 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
         self.assertEqual(None, s._key_from_fd(rd.fileno()))
 
         data = object()
-        key = s.register(rd, selectors.EVENT_READ, data)
-        self.assertIsInstance(key, selectors.SelectorKey)
+        key = s.register(rd, selectors2.EVENT_READ, data)
+        self.assertIsInstance(key, selectors2.SelectorKey)
         self.assertEqual(key.fileobj, rd)
         self.assertEqual(key.fd, rd.fileno())
-        self.assertEqual(key.events, selectors.EVENT_READ)
+        self.assertEqual(key.events, selectors2.EVENT_READ)
         self.assertIs(key.data, data)
         self.assertEqual(1, len(s.get_map()))
         for fd in s.get_map():
@@ -123,27 +165,27 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
 
     def test_register_negative_fd(self):
         s = self.make_selector()
-        self.assertRaises(ValueError, s.register, -1, selectors.EVENT_READ)
+        self.assertRaises(ValueError, s.register, -1, selectors2.EVENT_READ)
 
     def test_register_invalid_fileobj(self):
         s = self.make_selector()
-        self.assertRaises(ValueError, s.register, "string", selectors.EVENT_READ)
+        self.assertRaises(ValueError, s.register, "string", selectors2.EVENT_READ)
 
     def test_reregister_fd_same_fileobj(self):
         s, rd, wr = self.standard_setup()
-        self.assertRaises(KeyError, s.register, rd, selectors.EVENT_READ)
+        self.assertRaises(KeyError, s.register, rd, selectors2.EVENT_READ)
 
     def test_reregister_fd_different_fileobj(self):
         s, rd, wr = self.standard_setup()
-        self.assertRaises(KeyError, s.register, rd.fileno(), selectors.EVENT_READ)
+        self.assertRaises(KeyError, s.register, rd.fileno(), selectors2.EVENT_READ)
 
     def test_context_manager(self):
         s = self.make_selector()
         rd, wr = self.make_socketpair()
 
         with s as sel:
-            rd_key = sel.register(rd, selectors.EVENT_READ)
-            wr_key = sel.register(wr, selectors.EVENT_WRITE)
+            rd_key = sel.register(rd, selectors2.EVENT_READ)
+            wr_key = sel.register(wr, selectors2.EVENT_WRITE)
             self.assertEqual(rd_key, sel.get_key(rd))
             self.assertEqual(wr_key, sel.get_key(wr))
 
@@ -167,8 +209,8 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
         rd, wr = self.make_socketpair()
         rdfd = rd.fileno()
         wrfd = wr.fileno()
-        s.register(rdfd, selectors.EVENT_READ)
-        s.register(wrfd, selectors.EVENT_WRITE)
+        s.register(rdfd, selectors2.EVENT_READ)
+        s.register(wrfd, selectors2.EVENT_WRITE)
 
         rd.close()
         wr.close()
@@ -181,8 +223,8 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
     def test_unregister_after_fileobj_close(self):
         s = self.make_selector()
         rd, wr = self.make_socketpair()
-        s.register(rd, selectors.EVENT_READ)
-        s.register(wr, selectors.EVENT_WRITE)
+        s.register(rd, selectors2.EVENT_READ)
+        s.register(wr, selectors2.EVENT_WRITE)
 
         rd.close()
         wr.close()
@@ -213,10 +255,10 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
         s = self.make_selector()
         rd, wr = self.make_socketpair()
 
-        key = s.register(rd, selectors.EVENT_READ)
+        key = s.register(rd, selectors2.EVENT_READ)
 
         # Modify events
-        key2 = s.modify(rd, selectors.EVENT_WRITE)
+        key2 = s.modify(rd, selectors2.EVENT_WRITE)
         self.assertNotEqual(key.events, key2.events)
         self.assertEqual(key2, s.get_key(rd))
 
@@ -226,15 +268,15 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
         d1 = object()
         d2 = object()
 
-        key = s.register(rd, selectors.EVENT_READ, d1)
-        key2 = s.modify(rd, selectors.EVENT_READ, d2)
+        key = s.register(rd, selectors2.EVENT_READ, d1)
+        key2 = s.modify(rd, selectors2.EVENT_READ, d2)
         self.assertEqual(key.events, key2.events)
         self.assertIsNot(key.data, key2.data)
         self.assertEqual(key2, s.get_key(rd))
         self.assertIs(key2.data, d2)
 
         # Modify invalid fileobj
-        self.assertRaises(KeyError, s.modify, 999999, selectors.EVENT_READ)
+        self.assertRaises(KeyError, s.modify, 999999, selectors2.EVENT_READ)
 
     def test_empty_select(self):
         s = self.make_selector()
@@ -244,27 +286,27 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
         s = self.make_selector()
 
         rd, wr = self.make_socketpair()
-        key = s.register(rd, selectors.EVENT_READ | selectors.EVENT_WRITE)
+        key = s.register(rd, selectors2.EVENT_READ | selectors2.EVENT_WRITE)
 
-        self.assertEqual([(key, selectors.EVENT_WRITE)], s.select(0.001))
+        self.assertEqual([(key, selectors2.EVENT_WRITE)], s.select(0.001))
 
         wr.send(b'x')
         time.sleep(0.01)  # Wait for the write to flush.
 
-        self.assertEqual([(key, selectors.EVENT_READ | selectors.EVENT_WRITE)], s.select(0.001))
+        self.assertEqual([(key, selectors2.EVENT_READ | selectors2.EVENT_WRITE)], s.select(0.001))
 
     def test_select_multiple_selectors(self):
         s1 = self.make_selector()
         s2 = self.make_selector()
         rd, wr = self.make_socketpair()
-        key1 = s1.register(rd, selectors.EVENT_READ)
-        key2 = s2.register(rd, selectors.EVENT_READ)
+        key1 = s1.register(rd, selectors2.EVENT_READ)
+        key2 = s2.register(rd, selectors2.EVENT_READ)
 
         wr.send(b'x')
         time.sleep(0.01)  # Wait for the write to flush.
 
-        self.assertEqual([(key1, selectors.EVENT_READ)], s1.select(timeout=0.001))
-        self.assertEqual([(key2, selectors.EVENT_READ)], s2.select(timeout=0.001))
+        self.assertEqual([(key1, selectors2.EVENT_READ)], s1.select(timeout=0.001))
+        self.assertEqual([(key2, selectors2.EVENT_READ)], s2.select(timeout=0.001))
 
     def test_select_no_event_types(self):
         s = self.make_selector()
@@ -279,7 +321,7 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
             rd, wr = self.make_socketpair()
             readers.append(rd)
             writers.append(wr)
-            s.register(rd, selectors.EVENT_READ)
+            s.register(rd, selectors2.EVENT_READ)
 
         self.assertEqual(0, len(s.select(0.001)))
 
@@ -293,7 +335,7 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
         ready = s.select(0.001)
         self.assertEqual(32, len(ready))
         for key, events in ready:
-            self.assertEqual(selectors.EVENT_READ, events)
+            self.assertEqual(selectors2.EVENT_READ, events)
             self.assertIn(key.fileobj, readers)
 
         # Now read the byte from each endpoint.
@@ -306,7 +348,7 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
     def test_select_timeout_none(self):
         s = self.make_selector()
         rd, wr = self.make_socketpair()
-        s.register(wr, selectors.EVENT_WRITE)
+        s.register(wr, selectors2.EVENT_WRITE)
 
         with self.assertTakesTime(upper=SHORT_SELECT):
             self.assertEqual(1, len(s.select(timeout=None)))
@@ -322,7 +364,7 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
     def test_select_timeout_not_ready(self):
         s = self.make_selector()
         rd, wr = self.make_socketpair()
-        s.register(rd, selectors.EVENT_READ)
+        s.register(rd, selectors2.EVENT_READ)
 
         with self.assertTakesTime(upper=SHORT_SELECT):
             self.assertEqual(0, len(s.select(timeout=0)))
@@ -330,47 +372,47 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
         with self.assertTakesTime(lower=SHORT_SELECT, upper=SHORT_SELECT):
             self.assertEqual(0, len(s.select(timeout=SHORT_SELECT)))
 
-    @skipUnless(HAS_ALARM, "Platform doesn't have signal.alarm()")
+    @skipUnlessHasAlarm
     def test_select_timing(self):
         s = self.make_selector()
         rd, wr = self.make_socketpair()
-        key = s.register(rd, selectors.EVENT_READ)
+        key = s.register(rd, selectors2.EVENT_READ)
 
         self.set_alarm(SHORT_SELECT, lambda *args: wr.send(b'x'))
 
         with self.assertTakesTime(upper=SHORT_SELECT):
             ready = s.select(LONG_SELECT)
-        self.assertEqual([(key, selectors.EVENT_READ)], ready)
+        self.assertEqual([(key, selectors2.EVENT_READ)], ready)
 
-    @skipUnless(HAS_ALARM, "Platform doesn't have signal.alarm()")
+    @skipUnlessHasAlarm
     def test_select_interrupt_no_event(self):
         s = self.make_selector()
         rd, wr = self.make_socketpair()
-        s.register(rd, selectors.EVENT_READ)
+        s.register(rd, selectors2.EVENT_READ)
 
         self.set_alarm(SHORT_SELECT, lambda *args: None)
 
         with self.assertTakesTime(lower=LONG_SELECT, upper=LONG_SELECT):
             self.assertEqual([], s.select(LONG_SELECT))
 
-    @skipUnless(HAS_ALARM, "Platform doesn't have signal.alarm()")
+    @skipUnlessHasAlarm
     def test_select_interrupt_with_event(self):
         s = self.make_selector()
         rd, wr = self.make_socketpair()
-        s.register(rd, selectors.EVENT_READ)
+        s.register(rd, selectors2.EVENT_READ)
         key = s.get_key(rd)
 
         self.set_alarm(SHORT_SELECT, lambda *args: wr.send(b'x'))
 
         with self.assertTakesTime(lower=SHORT_SELECT, upper=SHORT_SELECT):
-            self.assertEqual([(key, selectors.EVENT_READ)], s.select(LONG_SELECT))
+            self.assertEqual([(key, selectors2.EVENT_READ)], s.select(LONG_SELECT))
         self.assertEqual(rd.recv(1), b'x')
 
-    @skipUnless(HAS_ALARM, "Platform doesn't have signal.alarm()")
+    @skipUnlessHasAlarm
     def test_select_multiple_interrupts_with_event(self):
         s = self.make_selector()
         rd, wr = self.make_socketpair()
-        s.register(rd, selectors.EVENT_READ)
+        s.register(rd, selectors2.EVENT_READ)
         key = s.get_key(rd)
 
         def second_alarm(*args):
@@ -383,14 +425,14 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
         self.set_alarm(SHORT_SELECT, first_alarm)
 
         with self.assertTakesTime(lower=SHORT_SELECT * 2, upper=SHORT_SELECT * 2):
-            self.assertEqual([(key, selectors.EVENT_READ)], s.select(LONG_SELECT))
+            self.assertEqual([(key, selectors2.EVENT_READ)], s.select(LONG_SELECT))
         self.assertEqual(rd.recv(1), b'x')
 
-    @skipUnless(HAS_ALARM, "Platform doesn't have signal.alarm()")
+    @skipUnlessHasAlarm
     def test_selector_error(self):
         s = self.make_selector()
         rd, wr = self.make_socketpair()
-        s.register(rd, selectors.EVENT_READ)
+        s.register(rd, selectors2.EVENT_READ)
 
         def alarm_exception(*args):
             err = OSError()
@@ -401,7 +443,7 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
 
         try:
             s.select(LONG_SELECT)
-        except selectors.SelectorError as e:
+        except selectors2.SelectorError as e:
             self.assertEqual(e.errno, errno.EACCES)
         except Exception as e:
             self.fail("Raised incorrect exception: " + str(e))
@@ -410,11 +452,11 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
 
     # Test ensures that _syscall_wrapper properly raises the
     # exception that is raised from an interrupt handler.
-    @skipUnless(HAS_ALARM, "Platform doesn't have signal.alarm()")
+    @skipUnlessHasAlarm
     def test_select_interrupt_exception(self):
         s = self.make_selector()
         rd, wr = self.make_socketpair()
-        s.register(rd, selectors.EVENT_READ)
+        s.register(rd, selectors2.EVENT_READ)
 
         class AlarmInterrupt(Exception):
             pass
@@ -447,6 +489,11 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
         s.close()
         after_fds = len(proc.open_files())
         self.assertEqual(before_fds, after_fds)
+
+    def test_selector_error_exception(self):
+        err = selectors2.SelectorError(1)
+        self.assertEqual(repr(err), "<SelectorError errno=1>")
+        self.assertEqual(str(err), "<SelectorError errno=1>")
 
 
 class ScalableSelectorMixin(object):
@@ -487,32 +534,90 @@ class ScalableSelectorMixin(object):
 
         for i in range(limit_nofile // 2):
             rd, wr = self.make_socketpair()
-            s.register(rd, selectors.EVENT_READ)
-            s.register(wr, selectors.EVENT_WRITE)
+            s.register(rd, selectors2.EVENT_READ)
+            s.register(wr, selectors2.EVENT_WRITE)
 
         self.assertEqual(limit_nofile // 2, len(s.select()))
 
 
-@skipUnless(hasattr(selectors, "SelectSelector"), "Platform doesn't have a SelectSelector")
+@skipUnlessHasSelector
+class TestUniqueSelectScenarios(BaseSelectorTestCase):
+    def test_select_module_patched_after_import(self):
+        # This test is to make sure that after import time
+        # calling DefaultSelector() will still give a good
+        # return value. This issue is caused by gevent, eventlet.
+
+        # Now remove all selectors except `select.select`.
+        patch_select_module(self, 'select')
+
+        # Make sure that the selector returned only uses the selector available.
+        selector = self.make_selector()
+        self.assertIsInstance(selector, selectors2.SelectSelector)
+
+    @skipUnlessHasENOSYS
+    def test_select_module_defines_does_not_implement_poll(self):
+        # This test is to make sure that if a platform defines
+        # a selector as being available but does not actually
+        # implement it.
+
+        # Reset the _DEFAULT_SELECTOR value as if using for the first time.
+        selectors2._DEFAULT_SELECTOR = None
+
+        # Now we're going to patch in a bad `poll`.
+        class BadPoll(object):
+            def poll(self, timeout):
+                raise OSError(errno.ENOSYS)
+
+        # Remove all selectors except `select.select` and replace `select.poll`.
+        patch_select_module(self, 'select', poll=BadPoll)
+
+        selector = self.make_selector()
+        self.assertIsInstance(selector, selectors2.SelectSelector)
+
+    @skipUnlessHasENOSYS
+    def test_select_module_defines_does_not_implement_epoll(self):
+        # Same as above test except with `select.epoll`.
+
+        # Reset the _DEFAULT_SELECTOR value as if using for the first time.
+        selectors2._DEFAULT_SELECTOR = None
+
+        # Now we're going to patch in a bad `epoll`.
+        def bad_epoll(*args, **kwargs):
+            raise OSError(errno.ENOSYS)
+
+        # Remove all selectors except `select.select` and replace `select.epoll`.
+        patch_select_module(self, 'select', epoll=bad_epoll)
+
+        selector = self.make_selector()
+        self.assertIsInstance(selector, selectors2.SelectSelector)
+
+
+@skipUnless(hasattr(selectors2, "SelectSelector"), "Platform doesn't have a SelectSelector")
 class SelectSelectorTestCase(BaseSelectorTestCase):
-    SELECTOR = getattr(selectors, "SelectSelector", None)
+    def setUp(self):
+        patch_select_module(self, 'select')
 
 
-@skipUnless(hasattr(selectors, "PollSelector"), "Platform doesn't have a PollSelector")
+@skipUnless(hasattr(selectors2, "PollSelector"), "Platform doesn't have a PollSelector")
 class PollSelectorTestCase(BaseSelectorTestCase, ScalableSelectorMixin):
-    SELECTOR = getattr(selectors, "PollSelector", None)
+    def setUp(self):
+        patch_select_module(self, 'poll')
 
 
-@skipUnless(hasattr(selectors, "EpollSelector"), "Platform doesn't have an EpollSelector")
+@skipUnless(hasattr(selectors2, "EpollSelector"), "Platform doesn't have an EpollSelector")
 class EpollSelectorTestCase(BaseSelectorTestCase, ScalableSelectorMixin):
-    SELECTOR = getattr(selectors, "EpollSelector", None)
+    def setUp(self):
+        patch_select_module(self, 'epoll')
 
 
-@skipUnless(hasattr(selectors, "KqueueSelector"), "Platform doesn't have a KqueueSelector")
+@skipUnless(hasattr(selectors2, "KqueueSelector"), "Platform doesn't have a KqueueSelector")
 class KqueueSelectorTestCase(BaseSelectorTestCase, ScalableSelectorMixin):
-    SELECTOR = getattr(selectors, "KqueueSelector", None)
+    def setUp(self):
+        patch_select_module(self, 'kqueue')
 
 
-@skipUnless(hasattr(selectors, "DevpollSelector"), "Platform doesn't have a DevpollSelector")
-class DevpollSelectorTestCase(BaseSelectorTestCase, ScalableSelectorMixin):
-    SELECTOR = getattr(selectors, "DevpollSelector", None)
+@skipUnlessJython
+@skipUnless(hasattr(selectors2, "JythonSelectSelector"), "Platform doesn't have a SelectSelector")
+class JythonSelectSelectorTestBase(BaseSelectorTestCase):
+    def setUp(self):
+        patch_select_module(self, 'select')

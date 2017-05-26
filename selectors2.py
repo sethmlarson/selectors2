@@ -1,17 +1,19 @@
+""" Back-ported, durable, and portable selectors """
+
 # Backport of selectors.py from Python 3.5+ to support Python < 3.4
 # Also has the behavior specified in PEP 475 which is to retry syscalls
 # in the case of an EINTR error. This module is required because selectors34
 # does not follow this behavior and instead returns that no file descriptor
-# events have occurred rather than retry the syscall. The decision to drop
-# support for select.devpoll is made to maintain 100% test coverage.
+# events have occurred rather than retry the syscall.
 
+from collections import namedtuple, Mapping
 import errno
 import math
+import platform
 import select
 import socket
 import sys
 import time
-from collections import namedtuple, Mapping
 
 try:
     monotonic = time.monotonic
@@ -20,21 +22,18 @@ except (AttributeError, ImportError):  # Python 3.3<
 
 __author__ = 'Seth Michael Larson'
 __email__ = 'sethmichaellarson@protonmail.com'
-__version__ = '1.1.1'
+__version__ = '2.0.0'
 __license__ = 'MIT'
 
-__all__ = [
-    'EVENT_READ',
-    'EVENT_WRITE',
-    'SelectorError',
-    'SelectorKey',
-    'DefaultSelector'
-]
+__all__ = ['EVENT_READ',
+           'EVENT_WRITE',
+           'SelectorError',
+           'SelectorKey',
+           'DefaultSelector']
 
 EVENT_READ = (1 << 0)
 EVENT_WRITE = (1 << 1)
-
-HAS_SELECT = True  # Variable that shows whether the platform has a selector.
+_DEFAULT_SELECTOR = None
 _SYSCALL_SENTINEL = object()  # Sentinel in case a system call returns None.
 
 
@@ -63,76 +62,6 @@ def _fileobj_to_fd(fileobj):
     if fd < 0:
         raise ValueError("Invalid file descriptor: {0}".format(fd))
     return fd
-
-# Python 3.5 uses a more direct route to wrap system calls to increase speed.
-if sys.version_info >= (3, 5):
-    def _syscall_wrapper(func, _, *args, **kwargs):
-        """ This is the short-circuit version of the below logic
-        because in Python 3.5+ all selectors restart system calls. """
-        try:
-            return func(*args, **kwargs)
-        except (OSError, IOError, select.error) as e:
-            errcode = None
-            if hasattr(e, "errno"):
-                errcode = e.errno
-            elif hasattr(e, "args"):
-                errcode = e.args[0]
-            raise SelectorError(errcode)
-else:
-    def _syscall_wrapper(func, recalc_timeout, *args, **kwargs):
-        """ Wrapper function for syscalls that could fail due to EINTR.
-        All functions should be retried if there is time left in the timeout
-        in accordance with PEP 475. """
-        timeout = kwargs.get("timeout", None)
-        if timeout is None:
-            expires = None
-            recalc_timeout = False
-        else:
-            timeout = float(timeout)
-            if timeout < 0.0:  # Timeout less than 0 treated as no timeout.
-                expires = None
-            else:
-                expires = monotonic() + timeout
-
-        args = list(args)
-        if recalc_timeout and "timeout" not in kwargs:
-            raise ValueError(
-                "Timeout must be in args or kwargs to be recalculated")
-
-        result = _SYSCALL_SENTINEL
-        while result is _SYSCALL_SENTINEL:
-            try:
-                result = func(*args, **kwargs)
-            # OSError is thrown by select.select
-            # IOError is thrown by select.epoll.poll
-            # select.error is thrown by select.poll.poll
-            # Aren't we thankful for Python 3.x rework for exceptions?
-            except (OSError, IOError, select.error) as e:
-                # select.error wasn't a subclass of OSError in the past.
-                errcode = None
-                if hasattr(e, "errno"):
-                    errcode = e.errno
-                elif hasattr(e, "args"):
-                    errcode = e.args[0]
-
-                # Also test for the Windows equivalent of EINTR.
-                is_interrupt = (errcode == errno.EINTR or (hasattr(errno, "WSAEINTR") and
-                                                           errcode == errno.WSAEINTR))
-
-                if is_interrupt:
-                    if expires is not None:
-                        current_time = monotonic()
-                        if current_time > expires:
-                            raise OSError(errno=errno.ETIMEDOUT)
-                        if recalc_timeout:
-                            if "timeout" in kwargs:
-                                kwargs["timeout"] = expires - current_time
-                    continue
-                if errcode:
-                    raise SelectorError(errcode)
-                else:
-                    raise
-        return result
 
 
 SelectorKey = namedtuple('SelectorKey', ['fileobj', 'fd', 'events', 'data'])
@@ -289,8 +218,9 @@ class BaseSelector(object):
     def __enter__(self):
         return self
 
-    def __exit__(self, *args):
+    def __exit__(self, *_):
         self.close()
+
 
 # Almost all platforms have select.select()
 if hasattr(select, "select"):
@@ -315,10 +245,6 @@ if hasattr(select, "select"):
             self._writers.discard(key.fd)
             return key
 
-        def _select(self, r, w, timeout=None):
-            """ Wrapper for select.select because timeout is a positional arg """
-            return select.select(r, w, [], timeout)
-
         def select(self, timeout=None):
             # Selecting on empty lists on Windows errors out.
             if not len(self._readers) and not len(self._writers):
@@ -326,7 +252,7 @@ if hasattr(select, "select"):
 
             timeout = None if timeout is None else max(timeout, 0.0)
             ready = []
-            r, w, _ = _syscall_wrapper(self._select, True, self._readers,
+            r, w, _ = _syscall_wrapper(self._wrap_select, True, self._readers,
                                        self._writers, timeout)
             r = set(r)
             w = set(w)
@@ -342,7 +268,91 @@ if hasattr(select, "select"):
                     ready.append((key, events & key.events))
             return ready
 
+        def _wrap_select(self, r, w, timeout=None):
+            """ Wrapper for select.select because timeout is a positional arg """
+            return select.select(r, w, [], timeout)
+
     __all__.append('SelectSelector')
+
+    # Jython has a different implementation of .fileno() for socket objects.
+    if platform.system() == 'Java':
+        class _JythonSelectorMapping(object):
+            """ This is an implementation of _SelectorMapping that is built
+            for use specifically with Jython, which does not provide a hashable
+            value from socket.socket.fileno(). """
+
+            def __init__(self, selector):
+                assert isinstance(selector, JythonSelectSelector)
+                self._selector = selector
+
+            def __len__(self):
+                return len(self._selector._sockets)
+
+            def __getitem__(self, fileobj):
+                for sock, key in self._selector._sockets:
+                    if sock is fileobj:
+                        return key
+                else:
+                    raise KeyError("{0!r} is not registered.".format(fileobj))
+
+        class JythonSelectSelector(SelectSelector):
+            """ This is an implementation of SelectSelector that is for Jython
+            which works around that Jython's socket.socket.fileno() does not
+            return an integer fd value. All SelectorKey.fd will be equal to -1
+            and should not be used. This instead uses object id to compare fileobj
+            and will only use select.select as it's the only selector that allows
+            directly passing in socket objects rather than registering fds.
+            See: http://bugs.jython.org/issue1678
+                 https://wiki.python.org/jython/NewSocketModule#socket.fileno.28.29_does_not_return_an_integer
+            """
+
+            def __init__(self):
+                super(JythonSelectSelector, self).__init__()
+
+                self._sockets = []  # Uses a list of tuples instead of dictionary.
+                self._map = _JythonSelectorMapping(self)
+                self._readers = []
+                self._writers = []
+
+                # Jython has a select.cpython_compatible_select function in older versions.
+                self._select_func = getattr(select, 'cpython_compatible_select', select.select)
+
+            def register(self, fileobj, events, data=None):
+                for sock, _ in self._sockets:
+                    if sock is fileobj:
+                        raise KeyError("{0!r} is already registered"
+                                       .format(fileobj, sock))
+
+                key = SelectorKey(fileobj, -1, events, data)
+                self._sockets.append((fileobj, key))
+
+                if events & EVENT_READ:
+                    self._readers.append(fileobj)
+                if events & EVENT_WRITE:
+                    self._writers.append(fileobj)
+                return key
+
+            def unregister(self, fileobj):
+                for i, (sock, key) in enumerate(self._sockets):
+                    if sock is fileobj:
+                        break
+                else:
+                    raise KeyError("{0!r} is not registered.".format(fileobj))
+
+                if key.events & EVENT_READ:
+                    self._readers.remove(fileobj)
+                if key.events & EVENT_WRITE:
+                    self._writers.remove(fileobj)
+
+                del self._sockets[i]
+                return key
+
+            def _wrap_select(self, r, w, timeout=None):
+                """ Wrapper for select.select because timeout is a positional arg """
+                return self._select_func(r, w, [], timeout)
+
+        __all__.append('JythonSelectSelector')
+        SelectSelector = JythonSelectSelector  # Override so the wrong selector isn't used.
 
 
 if hasattr(select, "poll"):
@@ -376,7 +386,7 @@ if hasattr(select, "poll"):
                 else:
                     # select.poll.poll() has a resolution of 1 millisecond,
                     # round away from zero to wait *at least* timeout seconds.
-                    timeout = math.ceil(timeout * 1e3)
+                    timeout = math.ceil(timeout * 1000)
 
             result = self._poll.poll(timeout)
             return result
@@ -436,7 +446,7 @@ if hasattr(select, "epoll"):
                     # select.epoll.poll() has a resolution of 1 millisecond
                     # but luckily takes seconds so we don't need a wrapper
                     # like PollSelector. Just for better rounding.
-                    timeout = math.ceil(timeout * 1e3) * 1e-3
+                    timeout = math.ceil(timeout * 1000) * 0.001
                 timeout = float(timeout)
             else:
                 timeout = -1.0  # epoll.poll() must have a float.
@@ -616,21 +626,115 @@ if hasattr(select, "kqueue"):
     __all__.append('KqueueSelector')
 
 
+def _can_allocate(struct):
+    """ Checks that select structs can be allocated by the underlying
+    operating system, not just advertised by the select module. We don't
+    check select() because we'll be hopeful that most platforms that
+    don't have it available will not advertise it. (ie: GAE) """
+    try:
+        # select.poll() objects won't fail until used.
+        if struct == 'poll':
+            p = select.poll()
+            p.poll(0)
+
+        # All others will fail on allocation.
+        else:
+            getattr(select, struct)().close()
+        return True
+    except (OSError, AttributeError):
+        return False
+
+
+# Python 3.5 uses a more direct route to wrap system calls to increase speed.
+if sys.version_info >= (3, 5):
+    def _syscall_wrapper(func, _, *args, **kwargs):
+        """ This is the short-circuit version of the below logic
+        because in Python 3.5+ all selectors restart system calls. """
+        try:
+            return func(*args, **kwargs)
+        except (OSError, IOError, select.error) as e:
+            errcode = None
+            if hasattr(e, "errno"):
+                errcode = e.errno
+            elif hasattr(e, "args"):
+                errcode = e.args[0]
+            raise SelectorError(errcode)
+else:
+    def _syscall_wrapper(func, recalc_timeout, *args, **kwargs):
+        """ Wrapper function for syscalls that could fail due to EINTR.
+        All functions should be retried if there is time left in the timeout
+        in accordance with PEP 475. """
+        timeout = kwargs.get("timeout", None)
+        if timeout is None:
+            expires = None
+            recalc_timeout = False
+        else:
+            timeout = float(timeout)
+            if timeout < 0.0:  # Timeout less than 0 treated as no timeout.
+                expires = None
+            else:
+                expires = monotonic() + timeout
+
+        args = list(args)
+        if recalc_timeout and "timeout" not in kwargs:
+            raise ValueError(
+                "Timeout must be in args or kwargs to be recalculated")
+
+        result = _SYSCALL_SENTINEL
+        while result is _SYSCALL_SENTINEL:
+            try:
+                result = func(*args, **kwargs)
+            # OSError is thrown by select.select
+            # IOError is thrown by select.epoll.poll
+            # select.error is thrown by select.poll.poll
+            # Aren't we thankful for Python 3.x rework for exceptions?
+            except (OSError, IOError, select.error) as e:
+                # select.error wasn't a subclass of OSError in the past.
+                errcode = None
+                if hasattr(e, "errno"):
+                    errcode = e.errno
+                elif hasattr(e, "args"):
+                    errcode = e.args[0]
+
+                # Also test for the Windows equivalent of EINTR.
+                is_interrupt = (errcode == errno.EINTR or (hasattr(errno, "WSAEINTR") and
+                                                           errcode == errno.WSAEINTR))
+
+                if is_interrupt:
+                    if expires is not None:
+                        current_time = monotonic()
+                        if current_time > expires:
+                            raise OSError(errno=errno.ETIMEDOUT)
+                        if recalc_timeout:
+                            if "timeout" in kwargs:
+                                kwargs["timeout"] = expires - current_time
+                    continue
+                if errcode:
+                    raise SelectorError(errcode)
+                else:
+                    raise
+        return result
+
+
 # Choose the best implementation, roughly:
-# kqueue == epoll == devpoll > poll > select.
+# kqueue == epoll > poll > select. Devpoll not supported. (See above)
 # select() also can't accept a FD > FD_SETSIZE (usually around 1024)
-if 'KqueueSelector' in globals():  # Platform-specific: Mac OS and BSD
-    DefaultSelector = KqueueSelector
-elif 'DevpollSelector' in globals():
-    DefaultSelector = DevpollSelector
-elif 'EpollSelector' in globals():  # Platform-specific: Linux
-    DefaultSelector = EpollSelector
-elif 'PollSelector' in globals():  # Platform-specific: Linux
-    DefaultSelector = PollSelector
-elif 'SelectSelector' in globals():  # Platform-specific: Windows
-    DefaultSelector = SelectSelector
-else:  # Platform-specific: AppEngine
-    def no_selector(_):
-        raise ValueError("Platform does not have a selector")
-    DefaultSelector = no_selector
-    HAS_SELECT = False
+def DefaultSelector():
+    """ This function serves as a first call for DefaultSelector to
+    detect if the select module is being monkey-patched incorrectly
+    by eventlet, greenlet, and preserve proper behavior. """
+    global _DEFAULT_SELECTOR
+    if _DEFAULT_SELECTOR is None:
+        if platform.system() == 'Java':  # Platform-specific: Jython
+            _DEFAULT_SELECTOR = JythonSelectSelector
+        elif _can_allocate('kqueue'):
+            _DEFAULT_SELECTOR = KqueueSelector
+        elif _can_allocate('epoll'):
+            _DEFAULT_SELECTOR = EpollSelector
+        elif _can_allocate('poll'):
+            _DEFAULT_SELECTOR = PollSelector
+        elif hasattr(select, 'select'):
+            _DEFAULT_SELECTOR = SelectSelector
+        else:  # Platform-specific: AppEngine
+            raise RuntimeError('Platform does not have a selector')
+    return _DEFAULT_SELECTOR()
