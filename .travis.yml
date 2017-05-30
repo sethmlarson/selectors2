@@ -3,6 +3,11 @@ sudo: false
 
 matrix:
   include:
+    # Miscellaneous Builds
+    - python: 3.6
+      env: TOXENV=lint
+    - python: 3.6
+      env: TOXENV=packaging
 
     # Linux Builds
     - python: 2.6
@@ -42,9 +47,6 @@ cache:
   - pip
   - directories:
     - ${HOME}/.cache
-
-before_install:
-  - openssl version
 
 install:
   - chmod a+x ./.travis/install.sh ./.travis/run.sh

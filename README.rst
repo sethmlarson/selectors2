@@ -1,33 +1,48 @@
-selectors2
+Selectors2
 ==========
 
-.. image:: https://img.shields.io/travis/SethMichaelLarson/selectors2/master.svg
+.. image:: https://img.shields.io/travis/SethMichaelLarson/selectors2/master.svg?style=flat-square
     :target: https://travis-ci.org/SethMichaelLarson/selectors2
-.. image:: https://img.shields.io/appveyor/ci/SethMichaelLarson/selectors2/master.svg
+.. image:: https://img.shields.io/appveyor/ci/SethMichaelLarson/selectors2/master.svg?style=flat-square
     :target: https://ci.appveyor.com/project/SethMichaelLarson/selectors2
-.. image:: https://img.shields.io/pypi/v/selectors2.svg
+.. image:: https://img.shields.io/pypi/v/selectors2.svg?style=flat-square
     :target: https://pypi.python.org/pypi/selectors2
-.. image:: https://img.shields.io/badge/SayThanks.io-%E2%98%BC-1EAED8.svg
+.. image:: https://img.shields.io/badge/say-thanks-ff69b4.svg?style=flat-square
     :target: https://saythanks.io/to/SethMichaelLarson
 
-Backported, durable, and portable selectors.
+Backported, durable, and portable selectors designed to replace
+the standard library selectors module.
+
+Features
+--------
 
 * Support for all major platforms. (Linux, Mac OS, Windows)
+* Support for Python 2.6 or later and **Jython**.
 * Support many different selectors
     * ``select.kqueue`` (BSD, Mac OS)
     * ``select.devpoll`` (Solaris)
     * ``select.epoll`` (Linux 2.5.44+)
     * ``select.poll`` (Linux, Mac OS)
     * ``select.select`` - (Linux, Mac OS, Windows)
-* Support for `PEP 475 <https://www.python.org/dev/peps/pep-0475/>`_ (Retries syscalls on interrupt)
+* Support for `PEP 475 <https://www.python.org/dev/peps/pep-0475/>`_ (Retries system calls on interrupt)
+* Support for modules which monkey-patch the standard library after import (like greenlet, gevent)
+* Support for systems which define a selector being available but don't actually implement it. ()
 
 About
 -----
 
-This module was originally written by me for the `urllib3 <https://github.com/shazow/urllib3>`_ project (history in PR `#1001 <https://github.com/shazow/urllib3/pull/1001>`_) but it was decided that it would be beneficial for everyone to have access to this work.
+This module was originally written by me for the `urllib3 <https://github.com/shazow/urllib3>`_ project
+(history in PR `#1001 <https://github.com/shazow/urllib3/pull/1001>`_) but it was decided that it would
+be beneficial for everyone to have access to this work.
+
+All the additional features that ``selectors2`` provides are real-world problems that have occurred
+and been reported during the lifetime of its maintenance and use within ``urllib3``.
+
+If this work is useful to you, `feel free to say thanks <https://saythanks.io/to/SethMichaelLarson>`_,
+takes only a little time and really brightens my day! :cake:
 
 Can this module be used in place of ``selectors``?
-------------------------------------------------------------------------------------------------------
+--------------------------------------------------
 
 Yes! This module is a 1-to-1 drop-in replacement for ``selectors`` and
 provides all selector types that would be available in ``selectors`` including
@@ -53,13 +68,11 @@ At this current time ``selectors2`` only support the ``SelectSelector`` for Wind
 On Linux and Mac OS, both sockets and pipes are supported (some other types may be supported as well, such as fifos or special file devices).
 
 What if I have to support a platform without ``select.select``?
-----------------------------------------------------------------------------------------------------------------
+---------------------------------------------------------------
 
 There are a few platforms that don't have a selector available, notably
-Google AppEngine, but there are probably a lot more. If you must support these
-platforms, one should check ``selectors.HAS_SELECTOR`` for a True value before
-trying to use ``selectors.DefaultSelector``.  Note this is not available for
-``selectors`` or ``selectors34``.
+Google AppEngine. When running on those platforms any call to ``DefaultSelector()``
+will raise a ``RuntimeError`` explaining that there are no selectors available.
 
 License
 -------
@@ -113,10 +126,3 @@ Usage
     # Stop watching the socket.
     s.unregister(sock)
     sock.close()
-
-Contributing
-------------
-This repository is thankful for all community-made PRs and Issues. :)
-
-If this work is useful to you, `feel free to say thanks <https://saythanks.io/to/SethMichaelLarson>`_,
-takes only a little time and really brightens my day! :cake:

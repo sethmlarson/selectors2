@@ -1,10 +1,26 @@
 """ Back-ported, durable, and portable selectors """
 
-# Backport of selectors.py from Python 3.5+ to support Python < 3.4
-# Also has the behavior specified in PEP 475 which is to retry syscalls
-# in the case of an EINTR error. This module is required because selectors34
-# does not follow this behavior and instead returns that no file descriptor
-# events have occurred rather than retry the syscall.
+# MIT License
+#
+# Copyright (c) 2017 Seth Michael Larson
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
 from collections import namedtuple, Mapping
 import errno
@@ -17,51 +33,26 @@ import time
 
 try:
     monotonic = time.monotonic
-except (AttributeError, ImportError):  # Python 3.3<
+except AttributeError:
     monotonic = time.time
 
 __author__ = 'Seth Michael Larson'
 __email__ = 'sethmichaellarson@protonmail.com'
 __version__ = '2.0.0'
 __license__ = 'MIT'
+__url__ = 'https://www.github.com/SethMichaelLarson/selectors2'
 
 __all__ = ['EVENT_READ',
            'EVENT_WRITE',
-           'SelectorError',
            'SelectorKey',
-           'DefaultSelector']
+           'DefaultSelector',
+           'BaseSelector']
 
 EVENT_READ = (1 << 0)
 EVENT_WRITE = (1 << 1)
 _DEFAULT_SELECTOR = None
 _SYSCALL_SENTINEL = object()  # Sentinel in case a system call returns None.
-
-
-class SelectorError(Exception):
-    def __init__(self, errcode):
-        super(SelectorError, self).__init__()
-        self.errno = errcode
-
-    def __repr__(self):
-        return "<SelectorError errno={0}>".format(self.errno)
-
-    def __str__(self):
-        return self.__repr__()
-
-
-def _fileobj_to_fd(fileobj):
-    """ Return a file descriptor from a file object. If
-    given an integer will simply return that integer back. """
-    if isinstance(fileobj, int):
-        fd = fileobj
-    else:
-        try:
-            fd = int(fileobj.fileno())
-        except (AttributeError, TypeError, ValueError):
-            raise ValueError("Invalid file object: {0!r}".format(fileobj))
-    if fd < 0:
-        raise ValueError("Invalid file descriptor: {0}".format(fd))
-    return fd
+_ERROR_TYPES = (OSError, IOError, socket.error)
 
 
 SelectorKey = namedtuple('SelectorKey', ['fileobj', 'fd', 'events', 'data'])
@@ -85,6 +76,21 @@ class _SelectorMapping(Mapping):
 
     def __iter__(self):
         return iter(self._selector._fd_to_key)
+
+
+def _fileobj_to_fd(fileobj):
+    """ Return a file descriptor from a file object. If
+    given an integer will simply return that integer back. """
+    if isinstance(fileobj, int):
+        fd = fileobj
+    else:
+        try:
+            fd = int(fileobj.fileno())
+        except (AttributeError, TypeError, ValueError):
+            raise ValueError("Invalid file object: {0!r}".format(fileobj))
+    if fd < 0:
+        raise ValueError("Invalid file descriptor: {0}".format(fd))
+    return fd
 
 
 class BaseSelector(object):
@@ -433,7 +439,7 @@ if hasattr(select, "epoll"):
             key = super(EpollSelector, self).unregister(fileobj)
             try:
                 _syscall_wrapper(self._epoll.unregister, False, key.fd)
-            except SelectorError:
+            except _ERROR_TYPES:
                 # This can occur when the fd was closed since registry.
                 pass
             return key
@@ -513,7 +519,7 @@ if hasattr(select, "devpoll"):
                 else:
                     # select.devpoll.poll() has a resolution of 1 millisecond,
                     # round away from zero to wait *at least* timeout seconds.
-                    timeout = math.ceil(timeout * 1e3)
+                    timeout = math.ceil(timeout * 1000)
 
             result = self._devpoll.poll(timeout)
             return result
@@ -577,7 +583,7 @@ if hasattr(select, "kqueue"):
                                        select.KQ_EV_DELETE)
                 try:
                     _syscall_wrapper(self._kqueue.control, False, [kevent], 0, 0)
-                except SelectorError:
+                except _ERROR_TYPES:
                     pass
             if key.events & EVENT_WRITE:
                 kevent = select.kevent(key.fd,
@@ -585,7 +591,7 @@ if hasattr(select, "kqueue"):
                                        select.KQ_EV_DELETE)
                 try:
                     _syscall_wrapper(self._kqueue.control, False, [kevent], 0, 0)
-                except SelectorError:
+                except _ERROR_TYPES:
                     pass
 
             return key
@@ -650,15 +656,7 @@ if sys.version_info >= (3, 5):
     def _syscall_wrapper(func, _, *args, **kwargs):
         """ This is the short-circuit version of the below logic
         because in Python 3.5+ all selectors restart system calls. """
-        try:
-            return func(*args, **kwargs)
-        except (OSError, IOError, select.error) as e:
-            errcode = None
-            if hasattr(e, "errno"):
-                errcode = e.errno
-            elif hasattr(e, "args"):
-                errcode = e.args[0]
-            raise SelectorError(errcode)
+        return func(*args, **kwargs)
 else:
     def _syscall_wrapper(func, recalc_timeout, *args, **kwargs):
         """ Wrapper function for syscalls that could fail due to EINTR.
@@ -709,15 +707,12 @@ else:
                             if "timeout" in kwargs:
                                 kwargs["timeout"] = expires - current_time
                     continue
-                if errcode:
-                    raise SelectorError(errcode)
-                else:
-                    raise
+                raise
         return result
 
 
 # Choose the best implementation, roughly:
-# kqueue == epoll > poll > select. Devpoll not supported. (See above)
+# kqueue == devpoll == epoll > poll > select
 # select() also can't accept a FD > FD_SETSIZE (usually around 1024)
 def DefaultSelector():
     """ This function serves as a first call for DefaultSelector to
@@ -729,6 +724,8 @@ def DefaultSelector():
             _DEFAULT_SELECTOR = JythonSelectSelector
         elif _can_allocate('kqueue'):
             _DEFAULT_SELECTOR = KqueueSelector
+        elif _can_allocate('devpoll'):
+            _DEFAULT_SELECTOR = DevpollSelector
         elif _can_allocate('epoll'):
             _DEFAULT_SELECTOR = EpollSelector
         elif _can_allocate('poll'):
@@ -736,5 +733,5 @@ def DefaultSelector():
         elif hasattr(select, 'select'):
             _DEFAULT_SELECTOR = SelectSelector
         else:  # Platform-specific: AppEngine
-            raise RuntimeError('Platform does not have a selector')
+            raise RuntimeError('Platform does not have a selector.')
     return _DEFAULT_SELECTOR()

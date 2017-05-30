@@ -33,15 +33,6 @@ HAS_ALARM = hasattr(signal, "alarm")
 LONG_SELECT = 1.0
 SHORT_SELECT = 0.01
 
-# Tolerance values for timer/speed fluctuations.
-TOLERANCE = 0.75
-
-# Detect whether we're running on Travis or AppVeyor.  This
-# is used to skip some verification points inside of tests to
-# not randomly fail our CI due to wild timer/speed differences.
-TRAVIS_CI = "TRAVIS" in os.environ
-APPVEYOR = "APPVEYOR" in os.environ
-
 
 skipUnlessHasSelector = skipUnless(hasattr(selectors2, 'SelectSelector'), "Platform doesn't have a selector")
 skipUnlessHasENOSYS = skipUnless(hasattr(errno, 'ENOSYS'), "Platform doesn't have errno.ENOSYS")
@@ -73,7 +64,7 @@ def patch_select_module(testcase, *keep, **replace):
 
 
 @skipUnlessHasSelector
-class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
+class _BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
     """ Implements the tests that each type of selector must pass. """
 
     def make_socketpair(self):
@@ -100,6 +91,8 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
         s.register(wr, selectors2.EVENT_WRITE)
         return s, rd, wr
 
+
+class _AllSelectorsTestCase(_BaseSelectorTestCase):
     def test_get_key(self):
         s = self.make_selector()
         rd, wr = self.make_socketpair()
@@ -443,12 +436,12 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
 
         try:
             s.select(LONG_SELECT)
-        except selectors2.SelectorError as e:
+        except OSError as e:
             self.assertEqual(e.errno, errno.EACCES)
         except Exception as e:
             self.fail("Raised incorrect exception: " + str(e))
         else:
-            self.fail("select() didn't raise SelectorError")
+            self.fail("select() didn't raise OSError")
 
     # Test ensures that _syscall_wrapper properly raises the
     # exception that is raised from an interrupt handler.
@@ -489,11 +482,6 @@ class BaseSelectorTestCase(unittest.TestCase, AlarmMixin, TimerMixin):
         s.close()
         after_fds = len(proc.open_files())
         self.assertEqual(before_fds, after_fds)
-
-    def test_selector_error_exception(self):
-        err = selectors2.SelectorError(1)
-        self.assertEqual(repr(err), "<SelectorError errno=1>")
-        self.assertEqual(str(err), "<SelectorError errno=1>")
 
 
 class ScalableSelectorMixin(object):
@@ -541,7 +529,7 @@ class ScalableSelectorMixin(object):
 
 
 @skipUnlessHasSelector
-class TestUniqueSelectScenarios(BaseSelectorTestCase):
+class TestUniqueSelectScenarios(_BaseSelectorTestCase):
     def test_select_module_patched_after_import(self):
         # This test is to make sure that after import time
         # calling DefaultSelector() will still give a good
@@ -592,32 +580,48 @@ class TestUniqueSelectScenarios(BaseSelectorTestCase):
         self.assertIsInstance(selector, selectors2.SelectSelector)
 
 
+class TestSelectors2Module(unittest.TestCase):
+    def test__all__has_correct_contents(self):
+        for entry in dir(selectors2):
+            if entry.endswith('Selector'):
+                self.assertIn(entry, selectors2.__all__)
+
+        for entry in selectors2.__all__:
+            self.assertIn(entry, dir(selectors2))
+
+
 @skipUnless(hasattr(selectors2, "SelectSelector"), "Platform doesn't have a SelectSelector")
-class SelectSelectorTestCase(BaseSelectorTestCase):
+class SelectSelectorTestCase(_AllSelectorsTestCase):
     def setUp(self):
         patch_select_module(self, 'select')
 
 
 @skipUnless(hasattr(selectors2, "PollSelector"), "Platform doesn't have a PollSelector")
-class PollSelectorTestCase(BaseSelectorTestCase, ScalableSelectorMixin):
+class PollSelectorTestCase(_AllSelectorsTestCase, ScalableSelectorMixin):
     def setUp(self):
         patch_select_module(self, 'poll')
 
 
 @skipUnless(hasattr(selectors2, "EpollSelector"), "Platform doesn't have an EpollSelector")
-class EpollSelectorTestCase(BaseSelectorTestCase, ScalableSelectorMixin):
+class EpollSelectorTestCase(_AllSelectorsTestCase, ScalableSelectorMixin):
     def setUp(self):
         patch_select_module(self, 'epoll')
 
 
+@skipUnless(hasattr(selectors2, "DevpollSelector"), "Platform doesn't have an DevpollSelector")
+class DevpollSelectorTestCase(_AllSelectorsTestCase, ScalableSelectorMixin):
+    def setUp(self):
+        patch_select_module(self, 'devpoll')
+
+
 @skipUnless(hasattr(selectors2, "KqueueSelector"), "Platform doesn't have a KqueueSelector")
-class KqueueSelectorTestCase(BaseSelectorTestCase, ScalableSelectorMixin):
+class KqueueSelectorTestCase(_AllSelectorsTestCase, ScalableSelectorMixin):
     def setUp(self):
         patch_select_module(self, 'kqueue')
 
 
 @skipUnlessJython
 @skipUnless(hasattr(selectors2, "JythonSelectSelector"), "Platform doesn't have a SelectSelector")
-class JythonSelectSelectorTestBase(BaseSelectorTestCase):
+class JythonSelectSelectorTestBase(_AllSelectorsTestCase):
     def setUp(self):
         patch_select_module(self, 'select')

@@ -13,12 +13,13 @@ __all__ = [
 ]
 
 # Tolerance values for timer/speed fluctuations.
-TOLERANCE = 0.85
+TOLERANCE = 0.5
 
-# Detect whether we're running on Travis.  This is used
-# to skip some verification points inside of tests to
+# Detect whether we're running on Travis or AppVeyor.  This
+# is used to skip some verification points inside of tests to
 # not randomly fail our CI due to wild timer/speed differences.
 TRAVIS_CI = "TRAVIS" in os.environ
+APPVEYOR = "APPVEYOR" in os.environ
 
 try:  # Python 2.x doesn't define time.perf_counter.
     from time import perf_counter as get_time
@@ -131,7 +132,7 @@ class TimerContext(object):
         total_time = self.end_time - self.start_time
 
         # Skip timing on CI due to flakiness.
-        if TRAVIS_CI:
+        if TRAVIS_CI or APPVEYOR:
             return
 
         if self.lower is not None:

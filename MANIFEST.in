@@ -1,2 +1,2 @@
-include README.rst CHANGELOG.rst LICENSE dev-requirements.txt
-recursive-include tests *
+include README.rst CHANGELOG.rst LICENSE dev-requirements.txt tox.ini
+recursive-include tests *.py
