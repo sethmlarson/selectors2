@@ -609,7 +609,7 @@ class TestUniqueSelectScenarios(_BaseSelectorTestCase):
         self.assertIsInstance(selector, selectors2.SelectSelector)
         
     def test_selector_raises_timeout_error_on_interrupt_over_time(self):
-        selectors._DEFAULT_SELECTOR = None
+        selectors2._DEFAULT_SELECTOR = None
 
         mock_socket = mock.Mock()
         mock_socket.fileno.return_value = 1
@@ -623,7 +623,7 @@ class TestUniqueSelectScenarios(_BaseSelectorTestCase):
         patch_select_module(self, select=slow_interrupting_select)
 
         selector = self.make_selector()
-        selector.register(mock_socket, selectors.EVENT_READ)
+        selector.register(mock_socket, selectors2.EVENT_READ)
 
         try:
             selector.select(timeout=0.1)
@@ -661,14 +661,14 @@ class TestUniqueSelectScenarios(_BaseSelectorTestCase):
         patch_select_module(self, select=mock_select.select)
 
         selector = self.make_selector()
-        selector.register(mock_socket, selectors.EVENT_READ)
+        selector.register(mock_socket, selectors2.EVENT_READ)
 
         result = selector.select(timeout=1.0)
 
         # Make sure the mocked call actually completed correctly.
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0][0].fileobj, mock_socket)
-        self.assertEqual(result[0][1], selectors.EVENT_READ)
+        self.assertEqual(result[0][1], selectors2.EVENT_READ)
 
         # There should be two calls to the mock_select.select() function
         self.assertEqual(mock_select.call_count, 2)
