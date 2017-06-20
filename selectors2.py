@@ -259,7 +259,7 @@ if hasattr(select, "select"):
             timeout = None if timeout is None else max(timeout, 0.0)
             ready = []
             r, w, _ = _syscall_wrapper(self._wrap_select, True, self._readers,
-                                       self._writers, timeout)
+                                       self._writers, timeout=timeout)
             r = set(r)
             w = set(w)
             for fd in r | w:
@@ -604,7 +604,7 @@ if hasattr(select, "kqueue"):
             ready_fds = {}
 
             kevent_list = _syscall_wrapper(self._kqueue.control, True,
-                                           None, max_events, timeout)
+                                           None, max_events, timeout=timeout)
 
             for kevent in kevent_list:
                 fd = kevent.ident
@@ -702,7 +702,7 @@ else:
                     if expires is not None:
                         current_time = monotonic()
                         if current_time > expires:
-                            raise OSError(errno=errno.ETIMEDOUT)
+                            raise OSError(errno.ETIMEDOUT)
                         if recalc_timeout:
                             if "timeout" in kwargs:
                                 kwargs["timeout"] = expires - current_time
