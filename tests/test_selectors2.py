@@ -3,6 +3,7 @@ import errno
 import os
 import psutil
 import platform
+import mock
 import select
 import signal
 import sys
@@ -482,6 +483,32 @@ class _AllSelectorsTestCase(_BaseSelectorTestCase):
         s.close()
         after_fds = len(proc.open_files())
         self.assertEqual(before_fds, after_fds)
+        
+    def test_slow_interrupted_syscall_raises_error(self):
+        s = self.make_selector()
+        rd, wr = self.make_socketpair()
+        s.register(rd, selectors2.EVENT_READ)
+        
+        old_syscall_wrapper = selectors2._syscall_wrapper
+        
+        def slow_syscall_wrapper(*args, **kwargs):
+            time.sleep(0.2)
+            error = OSError()
+            error.errno = errno.EINTR
+            raise error
+        
+        selectors2._syscall_wrapper = slow_syscall_wrapper
+        self.addCleanup(setattr, selectors2, '_syscall_wrapper', old_syscall_wrapper)
+        
+        with self.assertTakesTime(lower=0.1):
+            try:
+                s.select(timeout=0.1)
+            except OSError as e:
+                self.assertEqual(e.errno, errno.ETIMEDOUT)
+            except Exception:
+                self.fail('Didn\'t raise the right exception type.')
+            else:
+                self.fail('Didn\'t raise an exception.')
 
 
 class ScalableSelectorMixin(object):
@@ -578,6 +605,76 @@ class TestUniqueSelectScenarios(_BaseSelectorTestCase):
 
         selector = self.make_selector()
         self.assertIsInstance(selector, selectors2.SelectSelector)
+        
+    def test_selector_raises_timeout_error_on_interrupt_over_time(self):
+        selectors._DEFAULT_SELECTOR = None
+
+        mock_socket = mock.Mock()
+        mock_socket.fileno.return_value = 1
+
+        def slow_interrupting_select(*args, **kwargs):
+            time.sleep(0.2)
+            error = OSError()
+            error.errno = errno.EINTR
+            raise error
+
+        patch_select_module(self, select=slow_interrupting_select)
+
+        selector = self.make_selector()
+        selector.register(mock_socket, selectors.EVENT_READ)
+
+        try:
+            selector.select(timeout=0.1)
+        except OSError as e:
+            self.assertEqual(e.errno, errno.ETIMEDOUT)
+        else:
+            self.fail('Didn\'t raise an OSError')
+        
+    def test_timeout_is_recalculated_after_interrupt(self):
+        selectors._DEFAULT_SELECTOR = None
+
+        mock_socket = mock.Mock()
+        mock_socket.fileno.return_value = 1
+
+        class InterruptingSelect(object):
+            """ Helper object that imitates a select that interrupts
+            after sleeping some time then returns a result. """
+            def __init__(self):
+                self.call_count = 0
+                self.calls = []
+
+            def select(self, *args, **kwargs):
+                self.calls.append((args, kwargs))
+                self.call_count += 1
+                if self.call_count == 1:
+                    time.sleep(0.1)
+                    error = OSError()
+                    error.errno = errno.EINTR
+                    raise error
+                else:
+                    return [1], [], []
+
+        mock_select = InterruptingSelect()
+
+        patch_select_module(self, select=mock_select.select)
+
+        selector = self.make_selector()
+        selector.register(mock_socket, selectors.EVENT_READ)
+
+        result = selector.select(timeout=1.0)
+
+        # Make sure the mocked call actually completed correctly.
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0][0].fileobj, mock_socket)
+        self.assertEqual(result[0][1], selectors.EVENT_READ)
+
+        # There should be two calls to the mock_select.select() function
+        self.assertEqual(mock_select.call_count, 2)
+
+        # Timeout should be less in the second call.
+        # The structure of mock_select.calls is [(args, kwargs), (args, kwargs)] where
+        # args is ([r], [w], [x], timeout).
+        self.assertLess(mock_select.calls[1][0][3], mock_select.calls[0][0][3])
 
 
 class TestSelectors2Module(unittest.TestCase):
