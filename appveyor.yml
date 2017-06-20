@@ -58,3 +58,9 @@ install:
 
 test_script:
   - "tox"
+  
+branches:
+  only:
+  - master
+  - release
+
