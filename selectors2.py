@@ -704,8 +704,7 @@ else:
                         if current_time > expires:
                             raise OSError(errno.ETIMEDOUT)
                         if recalc_timeout:
-                            if "timeout" in kwargs:
-                                kwargs["timeout"] = expires - current_time
+                            kwargs["timeout"] = expires - current_time
                     continue
                 raise
         return result
