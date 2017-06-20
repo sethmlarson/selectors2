@@ -39,6 +39,7 @@ skipUnlessHasSelector = skipUnless(hasattr(selectors2, 'SelectSelector'), "Platf
 skipUnlessHasENOSYS = skipUnless(hasattr(errno, 'ENOSYS'), "Platform doesn't have errno.ENOSYS")
 skipUnlessHasAlarm = skipUnless(hasattr(signal, 'alarm'), "Platform doesn't have signal.alarm()")
 skipUnlessJython = skipUnless(platform.system() == 'Java', "Platform is not Jython")
+skipIfRetriesInterrupts = skipIf(sys.version_info >= (3, 5), "Platform retries interrupts")
 
 
 def patch_select_module(testcase, *keep, **replace):
@@ -484,6 +485,7 @@ class _AllSelectorsTestCase(_BaseSelectorTestCase):
         after_fds = len(proc.open_files())
         self.assertEqual(before_fds, after_fds)
         
+    @skipIfRetriesInterrupts
     def test_slow_interrupted_syscall_raises_error(self):
         s = self.make_selector()
         rd, wr = self.make_socketpair()
@@ -631,7 +633,7 @@ class TestUniqueSelectScenarios(_BaseSelectorTestCase):
             self.fail('Didn\'t raise an OSError')
         
     def test_timeout_is_recalculated_after_interrupt(self):
-        selectors._DEFAULT_SELECTOR = None
+        selectors2._DEFAULT_SELECTOR = None
 
         mock_socket = mock.Mock()
         mock_socket.fileno.return_value = 1
