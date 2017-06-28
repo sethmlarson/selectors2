@@ -673,10 +673,9 @@ else:
             else:
                 expires = monotonic() + timeout
 
-        args = list(args)
-        if recalc_timeout and "timeout" not in kwargs:
+        if recalc_timeout and 'timeout' not in kwargs:
             raise ValueError(
-                "Timeout must be in args or kwargs to be recalculated")
+                'Timeout must be in kwargs to be recalculated')
 
         result = _SYSCALL_SENTINEL
         while result is _SYSCALL_SENTINEL:
@@ -689,20 +688,20 @@ else:
             except (OSError, IOError, select.error) as e:
                 # select.error wasn't a subclass of OSError in the past.
                 errcode = None
-                if hasattr(e, "errno"):
+                if hasattr(e, 'errno') and e.errno is not None:
                     errcode = e.errno
-                elif hasattr(e, "args"):
+                elif hasattr(e, 'args'):
                     errcode = e.args[0]
 
                 # Also test for the Windows equivalent of EINTR.
-                is_interrupt = (errcode == errno.EINTR or (hasattr(errno, "WSAEINTR") and
+                is_interrupt = (errcode == errno.EINTR or (hasattr(errno, 'WSAEINTR') and
                                                            errcode == errno.WSAEINTR))
 
                 if is_interrupt:
                     if expires is not None:
                         current_time = monotonic()
                         if current_time > expires:
-                            raise OSError(errno.ETIMEDOUT)
+                            raise OSError(errno.ETIMEDOUT, 'Connection timed out')
                         if recalc_timeout:
                             kwargs["timeout"] = expires - current_time
                     continue
