@@ -581,6 +581,7 @@ class TestUniqueSelectScenarios(_BaseSelectorTestCase):
         selector = self.make_selector()
         self.assertIsInstance(selector, selectors2.SelectSelector)
         
+    @skipIfRetriesInterrupts
     def test_selector_raises_timeout_error_on_interrupt_over_time(self):
         selectors2._DEFAULT_SELECTOR = None
 
@@ -605,6 +606,7 @@ class TestUniqueSelectScenarios(_BaseSelectorTestCase):
         else:
             self.fail('Didn\'t raise an OSError')
         
+    @skipIfRetriesInterrupts
     def test_timeout_is_recalculated_after_interrupt(self):
         selectors2._DEFAULT_SELECTOR = None
 
