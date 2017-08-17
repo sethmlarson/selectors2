@@ -564,14 +564,14 @@ if hasattr(select, "kqueue"):
                                        select.KQ_FILTER_READ,
                                        select.KQ_EV_ADD)
 
-                _syscall_wrapper(self._kqueue.control, False, [kevent], 0, 0)
+                _syscall_wrapper(self._wrap_control, False, [kevent], 0, 0)
 
             if events & EVENT_WRITE:
                 kevent = select.kevent(key.fd,
                                        select.KQ_FILTER_WRITE,
                                        select.KQ_EV_ADD)
 
-                _syscall_wrapper(self._kqueue.control, False, [kevent], 0, 0)
+                _syscall_wrapper(self._wrap_control, False, [kevent], 0, 0)
 
             return key
 
@@ -582,7 +582,7 @@ if hasattr(select, "kqueue"):
                                        select.KQ_FILTER_READ,
                                        select.KQ_EV_DELETE)
                 try:
-                    _syscall_wrapper(self._kqueue.control, False, [kevent], 0, 0)
+                    _syscall_wrapper(self._wrap_control, False, [kevent], 0, 0)
                 except _ERROR_TYPES:
                     pass
             if key.events & EVENT_WRITE:
@@ -590,7 +590,7 @@ if hasattr(select, "kqueue"):
                                        select.KQ_FILTER_WRITE,
                                        select.KQ_EV_DELETE)
                 try:
-                    _syscall_wrapper(self._kqueue.control, False, [kevent], 0, 0)
+                    _syscall_wrapper(self._wrap_control, False, [kevent], 0, 0)
                 except _ERROR_TYPES:
                     pass
 
@@ -603,7 +603,7 @@ if hasattr(select, "kqueue"):
             max_events = len(self._fd_to_key) * 2
             ready_fds = {}
 
-            kevent_list = _syscall_wrapper(self._kqueue.control, True,
+            kevent_list = _syscall_wrapper(self._wrap_control, True,
                                            None, max_events, timeout=timeout)
 
             for kevent in kevent_list:
@@ -628,6 +628,9 @@ if hasattr(select, "kqueue"):
         def close(self):
             self._kqueue.close()
             super(KqueueSelector, self).close()
+            
+        def _wrap_control(self, changelist, max_events, timeout):
+            return self._kqueue.control(changelist, max_events, timeout)
 
     __all__.append('KqueueSelector')
 
