@@ -259,7 +259,7 @@ if hasattr(select, "select"):
             timeout = None if timeout is None else max(timeout, 0.0)
             ready = []
             r, w, _ = _syscall_wrapper(self._wrap_select, True, self._readers,
-                                       self._writers, timeout)
+                                       self._writers, timeout=timeout)
             r = set(r)
             w = set(w)
             for fd in r | w:
@@ -564,14 +564,14 @@ if hasattr(select, "kqueue"):
                                        select.KQ_FILTER_READ,
                                        select.KQ_EV_ADD)
 
-                _syscall_wrapper(self._kqueue.control, False, [kevent], 0, 0)
+                _syscall_wrapper(self._wrap_control, False, [kevent], 0, 0)
 
             if events & EVENT_WRITE:
                 kevent = select.kevent(key.fd,
                                        select.KQ_FILTER_WRITE,
                                        select.KQ_EV_ADD)
 
-                _syscall_wrapper(self._kqueue.control, False, [kevent], 0, 0)
+                _syscall_wrapper(self._wrap_control, False, [kevent], 0, 0)
 
             return key
 
@@ -582,7 +582,7 @@ if hasattr(select, "kqueue"):
                                        select.KQ_FILTER_READ,
                                        select.KQ_EV_DELETE)
                 try:
-                    _syscall_wrapper(self._kqueue.control, False, [kevent], 0, 0)
+                    _syscall_wrapper(self._wrap_control, False, [kevent], 0, 0)
                 except _ERROR_TYPES:
                     pass
             if key.events & EVENT_WRITE:
@@ -590,7 +590,7 @@ if hasattr(select, "kqueue"):
                                        select.KQ_FILTER_WRITE,
                                        select.KQ_EV_DELETE)
                 try:
-                    _syscall_wrapper(self._kqueue.control, False, [kevent], 0, 0)
+                    _syscall_wrapper(self._wrap_control, False, [kevent], 0, 0)
                 except _ERROR_TYPES:
                     pass
 
@@ -603,8 +603,8 @@ if hasattr(select, "kqueue"):
             max_events = len(self._fd_to_key) * 2
             ready_fds = {}
 
-            kevent_list = _syscall_wrapper(self._kqueue.control, True,
-                                           None, max_events, timeout)
+            kevent_list = _syscall_wrapper(self._wrap_control, True,
+                                           None, max_events, timeout=timeout)
 
             for kevent in kevent_list:
                 fd = kevent.ident
@@ -628,6 +628,9 @@ if hasattr(select, "kqueue"):
         def close(self):
             self._kqueue.close()
             super(KqueueSelector, self).close()
+
+        def _wrap_control(self, changelist, max_events, timeout):
+            return self._kqueue.control(changelist, max_events, timeout)
 
     __all__.append('KqueueSelector')
 
@@ -673,10 +676,9 @@ else:
             else:
                 expires = monotonic() + timeout
 
-        args = list(args)
-        if recalc_timeout and "timeout" not in kwargs:
+        if recalc_timeout and 'timeout' not in kwargs:
             raise ValueError(
-                "Timeout must be in args or kwargs to be recalculated")
+                'Timeout must be in kwargs to be recalculated')
 
         result = _SYSCALL_SENTINEL
         while result is _SYSCALL_SENTINEL:
@@ -689,23 +691,22 @@ else:
             except (OSError, IOError, select.error) as e:
                 # select.error wasn't a subclass of OSError in the past.
                 errcode = None
-                if hasattr(e, "errno"):
+                if hasattr(e, 'errno') and e.errno is not None:
                     errcode = e.errno
-                elif hasattr(e, "args"):
+                elif hasattr(e, 'args'):
                     errcode = e.args[0]
 
                 # Also test for the Windows equivalent of EINTR.
-                is_interrupt = (errcode == errno.EINTR or (hasattr(errno, "WSAEINTR") and
+                is_interrupt = (errcode == errno.EINTR or (hasattr(errno, 'WSAEINTR') and
                                                            errcode == errno.WSAEINTR))
 
                 if is_interrupt:
                     if expires is not None:
                         current_time = monotonic()
                         if current_time > expires:
-                            raise OSError(errno=errno.ETIMEDOUT)
+                            raise OSError(errno.ETIMEDOUT, 'Connection timed out')
                         if recalc_timeout:
-                            if "timeout" in kwargs:
-                                kwargs["timeout"] = expires - current_time
+                            kwargs["timeout"] = expires - current_time
                     continue
                 raise
         return result

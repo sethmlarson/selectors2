@@ -3,6 +3,7 @@ import errno
 import os
 import psutil
 import platform
+import mock
 import select
 import signal
 import sys
@@ -38,6 +39,7 @@ skipUnlessHasSelector = skipUnless(hasattr(selectors2, 'SelectSelector'), "Platf
 skipUnlessHasENOSYS = skipUnless(hasattr(errno, 'ENOSYS'), "Platform doesn't have errno.ENOSYS")
 skipUnlessHasAlarm = skipUnless(hasattr(signal, 'alarm'), "Platform doesn't have signal.alarm()")
 skipUnlessJython = skipUnless(platform.system() == 'Java', "Platform is not Jython")
+skipIfRetriesInterrupts = skipIf(sys.version_info >= (3, 5), "Platform retries interrupts")
 
 
 def patch_select_module(testcase, *keep, **replace):
@@ -578,6 +580,78 @@ class TestUniqueSelectScenarios(_BaseSelectorTestCase):
 
         selector = self.make_selector()
         self.assertIsInstance(selector, selectors2.SelectSelector)
+        
+    @skipIfRetriesInterrupts
+    def test_selector_raises_timeout_error_on_interrupt_over_time(self):
+        selectors2._DEFAULT_SELECTOR = None
+
+        mock_socket = mock.Mock()
+        mock_socket.fileno.return_value = 1
+
+        def slow_interrupting_select(*args, **kwargs):
+            time.sleep(0.2)
+            error = OSError()
+            error.errno = errno.EINTR
+            raise error
+
+        patch_select_module(self, select=slow_interrupting_select)
+
+        selector = self.make_selector()
+        selector.register(mock_socket, selectors2.EVENT_READ)
+
+        try:
+            selector.select(timeout=0.1)
+        except OSError as e:
+            self.assertEqual(e.errno, errno.ETIMEDOUT)
+        else:
+            self.fail('Didn\'t raise an OSError')
+        
+    @skipIfRetriesInterrupts
+    def test_timeout_is_recalculated_after_interrupt(self):
+        selectors2._DEFAULT_SELECTOR = None
+
+        mock_socket = mock.Mock()
+        mock_socket.fileno.return_value = 1
+
+        class InterruptingSelect(object):
+            """ Helper object that imitates a select that interrupts
+            after sleeping some time then returns a result. """
+            def __init__(self):
+                self.call_count = 0
+                self.calls = []
+
+            def select(self, *args, **kwargs):
+                self.calls.append((args, kwargs))
+                self.call_count += 1
+                if self.call_count == 1:
+                    time.sleep(0.1)
+                    error = OSError()
+                    error.errno = errno.EINTR
+                    raise error
+                else:
+                    return [1], [], []
+
+        mock_select = InterruptingSelect()
+
+        patch_select_module(self, select=mock_select.select)
+
+        selector = self.make_selector()
+        selector.register(mock_socket, selectors2.EVENT_READ)
+
+        result = selector.select(timeout=1.0)
+
+        # Make sure the mocked call actually completed correctly.
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0][0].fileobj, mock_socket)
+        self.assertEqual(result[0][1], selectors2.EVENT_READ)
+
+        # There should be two calls to the mock_select.select() function
+        self.assertEqual(mock_select.call_count, 2)
+
+        # Timeout should be less in the second call.
+        # The structure of mock_select.calls is [(args, kwargs), (args, kwargs)] where
+        # args is ([r], [w], [x], timeout).
+        self.assertLess(mock_select.calls[1][0][3], mock_select.calls[0][0][3])
 
 
 class TestSelectors2Module(unittest.TestCase):
