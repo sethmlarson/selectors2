@@ -484,33 +484,6 @@ class _AllSelectorsTestCase(_BaseSelectorTestCase):
         s.close()
         after_fds = len(proc.open_files())
         self.assertEqual(before_fds, after_fds)
-        
-    @skipIfRetriesInterrupts
-    def test_slow_interrupted_syscall_raises_error(self):
-        s = self.make_selector()
-        rd, wr = self.make_socketpair()
-        s.register(rd, selectors2.EVENT_READ)
-        
-        old_syscall_wrapper = selectors2._syscall_wrapper
-        
-        def slow_syscall_wrapper(*args, **kwargs):
-            time.sleep(0.2)
-            error = OSError()
-            error.errno = errno.EINTR
-            raise error
-        
-        selectors2._syscall_wrapper = slow_syscall_wrapper
-        self.addCleanup(setattr, selectors2, '_syscall_wrapper', old_syscall_wrapper)
-        
-        with self.assertTakesTime(lower=0.1):
-            try:
-                s.select(timeout=0.1)
-            except OSError as e:
-                self.assertEqual(e.errno, errno.ETIMEDOUT)
-            except Exception:
-                self.fail('Didn\'t raise the right exception type.')
-            else:
-                self.fail('Didn\'t raise an exception.')
 
 
 class ScalableSelectorMixin(object):
