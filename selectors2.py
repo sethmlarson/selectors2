@@ -628,7 +628,7 @@ if hasattr(select, "kqueue"):
         def close(self):
             self._kqueue.close()
             super(KqueueSelector, self).close()
-            
+
         def _wrap_control(self, changelist, max_events, timeout):
             return self._kqueue.control(changelist, max_events, timeout)
 
