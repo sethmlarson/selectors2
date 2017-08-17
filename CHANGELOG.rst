@@ -1,6 +1,10 @@
 Changelog
 =========
 
+Release 2.0.1 (August 17, 2017)
+
+* [BUGFIX] Timeouts would not be properly recalculated after receiving an EINTR error.
+
 Release 2.0.0 (May 30, 2017)
 ----------------------------
 
