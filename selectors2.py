@@ -281,7 +281,7 @@ if hasattr(select, "select"):
     __all__.append('SelectSelector')
 
     # Jython has a different implementation of .fileno() for socket objects.
-    if platform.system() == 'Java':
+    if platform.python_implementation() == 'Jython':
         class _JythonSelectorMapping(object):
             """ This is an implementation of _SelectorMapping that is built
             for use specifically with Jython, which does not provide a hashable
@@ -721,7 +721,7 @@ def DefaultSelector():
     by eventlet, greenlet, and preserve proper behavior. """
     global _DEFAULT_SELECTOR
     if _DEFAULT_SELECTOR is None:
-        if platform.system() == 'Java':  # Platform-specific: Jython
+        if platform.python_implementation() == 'Jython':  # Platform-specific: Jython
             _DEFAULT_SELECTOR = JythonSelectSelector
         elif _can_allocate('kqueue'):
             _DEFAULT_SELECTOR = KqueueSelector
