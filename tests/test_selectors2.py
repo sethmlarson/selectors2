@@ -540,10 +540,10 @@ class TestUniqueSelectScenarios(_BaseSelectorTestCase):
         mock_socket = mock.Mock()
         mock_socket.fileno.return_value = big_fileno
         
-        selector.register(big_fileno, selectors.EVENT_READ)
+        selector.register(big_fileno, selectors2.EVENT_READ)
         selector.unregister(big_fileno)
         
-        selector.register(mock_socket, selectors.EVENT_READ)
+        selector.register(mock_socket, selectors2.EVENT_READ)
         selector.unregister(mock_socket)
     
     def test_select_module_patched_after_import(self):
