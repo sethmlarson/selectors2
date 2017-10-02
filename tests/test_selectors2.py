@@ -532,6 +532,20 @@ class ScalableSelectorMixin(object):
 
 @skipUnlessHasSelector
 class TestUniqueSelectScenarios(_BaseSelectorTestCase):
+    def test_long_filenos_instead_of_int(self):
+        # This test tries the module on objects that have 64bit filenos.
+        selector = self.make_selector()
+        big_fileno = 2 ** 64
+        
+        mock_socket = mock.Mock()
+        mock_socket.fileno.return_value = big_fileno
+        
+        selector.register(big_fileno, selectors.EVENT_READ)
+        selector.unregister(big_fileno)
+        
+        selector.register(mock_socket, selectors.EVENT_READ)
+        selector.unregister(mock_socket)
+    
     def test_select_module_patched_after_import(self):
         # This test is to make sure that after import time
         # calling DefaultSelector() will still give a good
