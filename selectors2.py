@@ -54,6 +54,11 @@ _DEFAULT_SELECTOR = None
 _SYSCALL_SENTINEL = object()  # Sentinel in case a system call returns None.
 _ERROR_TYPES = (OSError, IOError, socket.error)
 
+try:
+    _INTEGER_TYPES = (int, long)
+except NameError:
+    _INTEGER_TYPES = (int,)
+
 
 SelectorKey = namedtuple('SelectorKey', ['fileobj', 'fd', 'events', 'data'])
 
@@ -81,12 +86,16 @@ class _SelectorMapping(Mapping):
 def _fileobj_to_fd(fileobj):
     """ Return a file descriptor from a file object. If
     given an integer will simply return that integer back. """
-    if isinstance(fileobj, int):
+    if isinstance(fileobj, _INTEGER_TYPES):
         fd = fileobj
     else:
-        try:
-            fd = int(fileobj.fileno())
-        except (AttributeError, TypeError, ValueError):
+        for _integer_type in _INTEGER_TYPES:
+            try:
+                fd = _integer_type(fileobj.fileno())
+                break
+            except (AttributeError, TypeError, ValueError):
+                continue
+        else:
             raise ValueError("Invalid file object: {0!r}".format(fileobj))
     if fd < 0:
         raise ValueError("Invalid file descriptor: {0}".format(fd))
