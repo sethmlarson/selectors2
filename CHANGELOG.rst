@@ -1,6 +1,11 @@
 Changelog
 =========
 
+Release 2.0.2 (July 21, 2020)
+-----------------------------
+
+* [BUGFIX] Added support for ``long`` integers in Python 2.x.
+
 Release 2.0.1 (August 17, 2017)
 -------------------------------
 

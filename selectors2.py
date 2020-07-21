@@ -38,7 +38,7 @@ except AttributeError:
 
 __author__ = 'Seth Michael Larson'
 __email__ = 'sethmichaellarson@protonmail.com'
-__version__ = '2.0.1'
+__version__ = '2.0.2'
 __license__ = 'MIT'
 __url__ = 'https://www.github.com/SethMichaelLarson/selectors2'
 
